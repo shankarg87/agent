@@ -1,0 +1,78 @@
+# Default Agent Profile Configuration
+
+# Identity
+profile_name: "default"
+profile_version: "1.0.0"
+description: "General-purpose Swiss Army Knife agent with MCP tool support"
+labels:
+  - "general"
+  - "coding"
+
+# Model Configuration
+primary_model:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5-20250929"
+  # API key should be set via ANTHROPIC_API_KEY environment variable
+
+routing_strategy: "single"
+max_context_tokens: 200000
+max_output_tokens: 8192
+temperature: 0.7
+top_p: 0.9
+
+# System Prompt
+system_prompt: |
+  You are a helpful AI assistant with access to various tools through the Model Context Protocol (MCP).
+  You can execute commands, interact with files, query databases, and perform other operations as needed.
+
+  Always:
+  - Think step by step
+  - Use tools when appropriate
+  - Explain your reasoning
+  - Ask for clarification when needed
+
+# Prompt Templates
+prompt_templates:
+  interactive_preamble: "The user is engaging in an interactive conversation."
+  autonomous_preamble: "Complete the following task autonomously with minimal interaction."
+  tool_use_preamble: "You have access to the following tools. Use them as needed to complete the task."
+  checkpoint_preamble: "Please review and approve the following action before proceeding."
+
+output_style: "concise"
+
+# Tools/MCP - references to servers defined in mcp/servers.yaml
+tools:
+  - server_name: "echo"
+    timeout: 30s
+    retries: 3
+    requires_approval:
+      always: false
+
+# Approval & Checkpoints
+approval_mode: "policy"
+approval_policies:
+  write_ops: false
+  dangerous_ops: true
+  budget_exceeded: true
+auto_approve_in_daemon: true
+
+# Budgets & Limits
+max_tool_calls: 50
+max_run_time_seconds: 300
+max_cost_usd: 1.0
+max_failures_per_run: 3
+
+# Memory
+memory_enabled: false
+write_policy: "explicit"
+read_policy: "on_demand"
+
+# Logging & Observability
+log_level: "info"
+trace_enabled: true
+metrics_enabled: false
+log_payload_policy: "redacted"
+
+# Reliability
+idempotency_keys: true
+resume_on_restart: false

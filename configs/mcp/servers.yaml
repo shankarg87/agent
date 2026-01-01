@@ -1,0 +1,10 @@
+# MCP Server Configuration
+
+servers:
+  - name: "echo"
+    transport: "stdio"
+    endpoint: "./examples/mcp-servers/echo/echo-server"
+    args: []
+    timeout: 30s
+    retry_max: 3
+    retry_delay: 1s
