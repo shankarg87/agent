@@ -16,33 +16,33 @@ type AgentConfig struct {
 	Labels         []string `yaml:"labels"`
 
 	// Model routing
-	PrimaryModel    ModelConfig   `yaml:"primary_model"`
-	FallbackModels  []ModelConfig `yaml:"fallback_models,omitempty"`
-	RoutingStrategy string        `yaml:"routing_strategy"` // single, fallback, cost_aware, latency_aware
-	MaxContextTokens int          `yaml:"max_context_tokens,omitempty"`
-	MaxOutputTokens  int          `yaml:"max_output_tokens,omitempty"`
-	Temperature      float64      `yaml:"temperature,omitempty"`
-	TopP             float64      `yaml:"top_p,omitempty"`
+	PrimaryModel     ModelConfig   `yaml:"primary_model"`
+	FallbackModels   []ModelConfig `yaml:"fallback_models,omitempty"`
+	RoutingStrategy  string        `yaml:"routing_strategy"` // single, fallback, cost_aware, latency_aware
+	MaxContextTokens int           `yaml:"max_context_tokens,omitempty"`
+	MaxOutputTokens  int           `yaml:"max_output_tokens,omitempty"`
+	Temperature      float64       `yaml:"temperature,omitempty"`
+	TopP             float64       `yaml:"top_p,omitempty"`
 
 	// Prompting
-	SystemPrompt     string                    `yaml:"system_prompt"`
-	PromptTemplates  PromptTemplates           `yaml:"prompt_templates,omitempty"`
-	FewShotExamples  []string                  `yaml:"few_shot_examples,omitempty"`
-	OutputStyle      string                    `yaml:"output_style"` // concise, verbose, json
+	SystemPrompt    string          `yaml:"system_prompt"`
+	PromptTemplates PromptTemplates `yaml:"prompt_templates,omitempty"`
+	FewShotExamples []string        `yaml:"few_shot_examples,omitempty"`
+	OutputStyle     string          `yaml:"output_style"` // concise, verbose, json
 
 	// Tools/MCP (references to MCP server configs)
 	Tools []ToolConfig `yaml:"tools,omitempty"`
 
 	// Approval & checkpoints
-	ApprovalMode     string           `yaml:"approval_mode"` // never, always, policy
-	ApprovalPolicies ApprovalPolicies `yaml:"approval_policies,omitempty"`
-	AutoApproveInDaemon bool          `yaml:"auto_approve_in_daemon"`
+	ApprovalMode        string           `yaml:"approval_mode"` // never, always, policy
+	ApprovalPolicies    ApprovalPolicies `yaml:"approval_policies,omitempty"`
+	AutoApproveInDaemon bool             `yaml:"auto_approve_in_daemon"`
 
 	// Budgets & limits
-	MaxToolCalls       int     `yaml:"max_tool_calls,omitempty"`
-	MaxRunTimeSeconds  int     `yaml:"max_run_time_seconds,omitempty"`
-	MaxCostUSD         float64 `yaml:"max_cost_usd,omitempty"`
-	MaxFailuresPerRun  int     `yaml:"max_failures_per_run,omitempty"`
+	MaxToolCalls      int     `yaml:"max_tool_calls,omitempty"`
+	MaxRunTimeSeconds int     `yaml:"max_run_time_seconds,omitempty"`
+	MaxCostUSD        float64 `yaml:"max_cost_usd,omitempty"`
+	MaxFailuresPerRun int     `yaml:"max_failures_per_run,omitempty"`
 
 	// Memory
 	MemoryEnabled  bool   `yaml:"memory_enabled"`
@@ -52,10 +52,11 @@ type AgentConfig struct {
 	RetentionDays  int    `yaml:"retention_days,omitempty"`
 
 	// Logging & observability
-	LogLevel          string `yaml:"log_level"` // debug, info, warn, error
-	TraceEnabled      bool   `yaml:"trace_enabled"`
-	MetricsEnabled    bool   `yaml:"metrics_enabled"`
-	LogPayloadPolicy  string `yaml:"log_payload_policy"` // full, redacted, hashes_only
+	LogLevel         string        `yaml:"log_level"` // debug, info, warn, error
+	TraceEnabled     bool          `yaml:"trace_enabled"`
+	MetricsEnabled   bool          `yaml:"metrics_enabled"`
+	MetricsConfig    MetricsConfig `yaml:"metrics_config,omitempty"`
+	LogPayloadPolicy string        `yaml:"log_payload_policy"` // full, redacted, hashes_only
 
 	// Reliability
 	IdempotencyKeys bool `yaml:"idempotency_keys"`
@@ -63,11 +64,11 @@ type AgentConfig struct {
 }
 
 type ModelConfig struct {
-	Provider string            `yaml:"provider"` // anthropic, openai, gemini, ollama
-	Model    string            `yaml:"model"`
-	Endpoint string            `yaml:"endpoint,omitempty"` // for custom endpoints
-	APIKey   string            `yaml:"api_key,omitempty"`  // can also use env vars
-	Params   map[string]any    `yaml:"params,omitempty"`   // provider-specific params
+	Provider string         `yaml:"provider"` // anthropic, openai, gemini, ollama
+	Model    string         `yaml:"model"`
+	Endpoint string         `yaml:"endpoint,omitempty"` // for custom endpoints
+	APIKey   string         `yaml:"api_key,omitempty"`  // can also use env vars
+	Params   map[string]any `yaml:"params,omitempty"`   // provider-specific params
 }
 
 type PromptTemplates struct {
@@ -78,15 +79,15 @@ type PromptTemplates struct {
 }
 
 type ToolConfig struct {
-	ServerName        string                 `yaml:"server_name"`        // reference to MCP server
-	Capabilities      []string               `yaml:"capabilities,omitempty"`
-	Timeout           time.Duration          `yaml:"timeout,omitempty"`
-	Retries           int                    `yaml:"retries,omitempty"`
-	ConcurrencyLimit  int                    `yaml:"concurrency_limit,omitempty"`
-	Allowlist         []string               `yaml:"allowlist,omitempty"`
-	Denylist          []string               `yaml:"denylist,omitempty"`
-	RequiresApproval  ApprovalRequirement    `yaml:"requires_approval,omitempty"`
-	Redaction         RedactionConfig        `yaml:"redaction,omitempty"`
+	ServerName       string              `yaml:"server_name"` // reference to MCP server
+	Capabilities     []string            `yaml:"capabilities,omitempty"`
+	Timeout          time.Duration       `yaml:"timeout,omitempty"`
+	Retries          int                 `yaml:"retries,omitempty"`
+	ConcurrencyLimit int                 `yaml:"concurrency_limit,omitempty"`
+	Allowlist        []string            `yaml:"allowlist,omitempty"`
+	Denylist         []string            `yaml:"denylist,omitempty"`
+	RequiresApproval ApprovalRequirement `yaml:"requires_approval,omitempty"`
+	Redaction        RedactionConfig     `yaml:"redaction,omitempty"`
 }
 
 type ApprovalRequirement struct {
@@ -100,9 +101,31 @@ type RedactionConfig struct {
 }
 
 type ApprovalPolicies struct {
-	WriteOps        bool `yaml:"write_ops"`
-	DangerousOps    bool `yaml:"dangerous_ops"`
-	BudgetExceeded  bool `yaml:"budget_exceeded"`
+	WriteOps       bool `yaml:"write_ops"`
+	DangerousOps   bool `yaml:"dangerous_ops"`
+	BudgetExceeded bool `yaml:"budget_exceeded"`
+}
+
+type MetricsConfig struct {
+	Provider   string            `yaml:"provider"`  // prometheus, otel
+	Namespace  string            `yaml:"namespace"` // metric namespace prefix
+	Endpoint   string            `yaml:"endpoint"`  // HTTP endpoint for metrics
+	Prometheus *PrometheusConfig `yaml:"prometheus,omitempty"`
+	OTEL       *OTELConfig       `yaml:"otel,omitempty"`
+}
+
+type PrometheusConfig struct {
+	Path     string            `yaml:"path"`     // Default: "/metrics"
+	Registry string            `yaml:"registry"` // Default: "default"
+	Labels   map[string]string `yaml:"labels"`   // Static labels
+}
+
+type OTELConfig struct {
+	Endpoint      string            `yaml:"endpoint"`       // OTEL collector endpoint
+	Protocol      string            `yaml:"protocol"`       // "grpc" or "http"
+	Headers       map[string]string `yaml:"headers"`        // Additional headers
+	Resources     map[string]string `yaml:"resources"`      // Resource attributes
+	ExportTimeout time.Duration     `yaml:"export_timeout"` // Export timeout
 }
 
 // LoadAgentConfig loads an agent configuration from a YAML file

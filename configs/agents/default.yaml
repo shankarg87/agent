@@ -70,7 +70,24 @@ read_policy: "on_demand"
 # Logging & Observability
 log_level: "info"
 trace_enabled: true
-metrics_enabled: false
+metrics_enabled: true
+metrics_config:
+  provider: "prometheus"  # or "otel"
+  namespace: "agent"
+  endpoint: "/metrics"
+  prometheus:
+    path: "/metrics"
+    registry: "default"
+    labels:
+      service: "agent-runtime"
+      environment: "development"
+  # otel:
+  #   endpoint: "http://localhost:4317"
+  #   protocol: "grpc"
+  #   export_timeout: 30s
+  #   resources:
+  #     service.name: "agent-runtime"
+  #     service.version: "1.0.0"
 log_payload_policy: "redacted"
 
 # Reliability

@@ -11,6 +11,7 @@ import (
 	"github.com/shankgan/agent/internal/config"
 	"github.com/shankgan/agent/internal/events"
 	"github.com/shankgan/agent/internal/mcp"
+	"github.com/shankgan/agent/internal/metrics"
 	"github.com/shankgan/agent/internal/provider"
 	"github.com/shankgan/agent/internal/store"
 )
@@ -22,6 +23,7 @@ type Runtime struct {
 	eventBus    *events.EventBus
 	provider    provider.Provider
 	mcpRegistry *mcp.Registry
+	metrics     *metrics.AgentMetrics
 
 	mu            sync.RWMutex
 	activeRuns    map[string]*RunContext
@@ -51,6 +53,7 @@ func NewRuntime(
 	eb *events.EventBus,
 	prov provider.Provider,
 	mcpReg *mcp.Registry,
+	met *metrics.AgentMetrics,
 ) *Runtime {
 	return &Runtime{
 		config:        cfg,
@@ -58,6 +61,7 @@ func NewRuntime(
 		eventBus:      eb,
 		provider:      prov,
 		mcpRegistry:   mcpReg,
+		metrics:       met,
 		activeRuns:    make(map[string]*RunContext),
 		cancellations: make(map[string]context.CancelFunc),
 	}
@@ -65,6 +69,14 @@ func NewRuntime(
 
 // CreateRun creates a new run
 func (r *Runtime) CreateRun(ctx context.Context, req *CreateRunRequest) (*store.Run, error) {
+	// Record run creation metrics
+	if r.metrics != nil {
+		r.metrics.RunCreated(ctx, req.TenantID, req.Mode)
+		defer func() {
+			r.metrics.SetActiveRuns(ctx, req.TenantID, int64(r.getActiveRunCountForTenant(req.TenantID)))
+		}()
+	}
+
 	// Get or create session
 	var session *store.Session
 	if req.SessionID != "" {
@@ -627,7 +639,27 @@ func (r *Runtime) publishEvent(runID string, eventType string, data map[string]a
 	}
 
 	r.store.AddEvent(context.Background(), runID, event)
+
+	// Record event bus metrics
+	if r.metrics != nil {
+		r.metrics.EventBusEvent(context.Background(), eventType, runID)
+	}
+
 	r.eventBus.Publish(runID, event)
+}
+
+// getActiveRunCountForTenant returns the number of active runs for a specific tenant
+func (r *Runtime) getActiveRunCountForTenant(tenantID string) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	count := 0
+	for _, runCtx := range r.activeRuns {
+		if runCtx.Run.TenantID == tenantID {
+			count++
+		}
+	}
+	return count
 }
 
 // CreateRunRequest represents a request to create a new run
