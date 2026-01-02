@@ -356,9 +356,9 @@ type openaiStreamChunk struct {
 }
 
 type openaiStreamChoice struct {
-	Index        int                 `json:"index"`
-	Delta        openaiStreamDelta   `json:"delta"`
-	FinishReason string              `json:"finish_reason"`
+	Index        int               `json:"index"`
+	Delta        openaiStreamDelta `json:"delta"`
+	FinishReason string            `json:"finish_reason"`
 }
 
 type openaiStreamDelta struct {

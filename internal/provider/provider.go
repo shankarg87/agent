@@ -36,30 +36,30 @@ type ChatRequest struct {
 
 // ChatResponse represents a chat completion response
 type ChatResponse struct {
-	ID      string    `json:"id"`
-	Content string    `json:"content"`
-	Role    string    `json:"role"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	FinishReason string `json:"finish_reason"`
-	Usage   Usage     `json:"usage"`
+	ID           string     `json:"id"`
+	Content      string     `json:"content"`
+	Role         string     `json:"role"`
+	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
+	FinishReason string     `json:"finish_reason"`
+	Usage        Usage      `json:"usage"`
 }
 
 // StreamEvent represents a streaming response event
 type StreamEvent struct {
-	Type    string     `json:"type"` // content_delta, tool_call, done, error
-	Content string     `json:"content,omitempty"`
+	Type     string    `json:"type"` // content_delta, tool_call, done, error
+	Content  string    `json:"content,omitempty"`
 	ToolCall *ToolCall `json:"tool_call,omitempty"`
-	Done    bool       `json:"done,omitempty"`
-	Error   error      `json:"error,omitempty"`
-	Usage   *Usage     `json:"usage,omitempty"`
+	Done     bool      `json:"done,omitempty"`
+	Error    error     `json:"error,omitempty"`
+	Usage    *Usage    `json:"usage,omitempty"`
 }
 
 // Message represents a chat message
 type Message struct {
-	Role      string     `json:"role"` // system, user, assistant, tool
-	Content   string     `json:"content"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string    `json:"tool_call_id,omitempty"` // for tool response messages
+	Role       string     `json:"role"` // system, user, assistant, tool
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"` // for tool response messages
 }
 
 // Tool represents a tool definition
@@ -77,8 +77,8 @@ type Function struct {
 
 // ToolCall represents a tool call request from the model
 type ToolCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"` // function
+	ID       string       `json:"id"`
+	Type     string       `json:"type"` // function
 	Function FunctionCall `json:"function"`
 }
 
