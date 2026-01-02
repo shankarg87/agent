@@ -23,19 +23,25 @@ type Runtime struct {
 	provider    provider.Provider
 	mcpRegistry *mcp.Registry
 
-	mu             sync.RWMutex
-	activeRuns     map[string]*RunContext
-	cancellations  map[string]context.CancelFunc
+	mu            sync.RWMutex
+	activeRuns    map[string]*RunContext
+	cancellations map[string]context.CancelFunc
 }
 
 // RunContext holds the execution context for a single run
 type RunContext struct {
-	Run          *store.Run
-	Session      *store.Session
-	Messages     []*store.Message
-	Cancel       context.CancelFunc
+	Run           *store.Run
+	Session       *store.Session
+	Messages      []*store.Message
+	Cancel        context.CancelFunc
 	ToolCallCount int
 	FailureCount  int
+
+	// Pause/resume state
+	mu           sync.RWMutex
+	isPaused     bool
+	pauseSignal  chan struct{}
+	resumeSignal chan struct{}
 }
 
 // NewRuntime creates a new runtime instance
@@ -142,6 +148,107 @@ func (r *Runtime) CancelRun(ctx context.Context, runID string) error {
 	return r.store.UpdateRun(ctx, run)
 }
 
+// PauseRun pauses a running run
+func (r *Runtime) PauseRun(ctx context.Context, runID string) error {
+	r.mu.Lock()
+	runCtx, ok := r.activeRuns[runID]
+	r.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("run not found or not active")
+	}
+
+	runCtx.mu.Lock()
+	defer runCtx.mu.Unlock()
+
+	if runCtx.isPaused {
+		return fmt.Errorf("run is already paused")
+	}
+
+	// Update run status
+	run, err := r.store.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+
+	if run.Status != store.RunStateRunning {
+		return fmt.Errorf("run is not in running state, current status: %s", run.Status)
+	}
+
+	run.Status = store.RunStatePaused
+	if err := r.store.UpdateRun(ctx, run); err != nil {
+		return err
+	}
+
+	runCtx.isPaused = true
+	runCtx.Run = run
+
+	// Signal pause to the agent loop
+	select {
+	case runCtx.pauseSignal <- struct{}{}:
+	default:
+		// Channel already has a signal
+	}
+
+	// Publish pause event
+	r.publishEvent(runID, store.EventTypeRunPaused, map[string]any{
+		"run_id": runID,
+		"reason": "user_requested",
+	})
+
+	return nil
+}
+
+// ResumeRun resumes a paused run
+func (r *Runtime) ResumeRun(ctx context.Context, runID string) error {
+	r.mu.Lock()
+	runCtx, ok := r.activeRuns[runID]
+	r.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("run not found or not active")
+	}
+
+	runCtx.mu.Lock()
+	defer runCtx.mu.Unlock()
+
+	if !runCtx.isPaused {
+		return fmt.Errorf("run is not paused")
+	}
+
+	// Update run status
+	run, err := r.store.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+
+	if run.Status != store.RunStatePaused {
+		return fmt.Errorf("run is not in paused state, current status: %s", run.Status)
+	}
+
+	run.Status = store.RunStateRunning
+	if err := r.store.UpdateRun(ctx, run); err != nil {
+		return err
+	}
+
+	runCtx.isPaused = false
+	runCtx.Run = run
+
+	// Signal resume to the agent loop
+	select {
+	case runCtx.resumeSignal <- struct{}{}:
+	default:
+		// Channel already has a signal
+	}
+
+	// Publish resume event
+	r.publishEvent(runID, store.EventTypeRunResumed, map[string]any{
+		"run_id": runID,
+	})
+
+	return nil
+}
+
 // executeRun is the main execution loop for a run
 func (r *Runtime) executeRun(parentCtx context.Context, runID string) {
 	ctx, cancel := context.WithCancel(parentCtx)
@@ -188,10 +295,12 @@ func (r *Runtime) executeRun(parentCtx context.Context, runID string) {
 	}
 
 	runCtx := &RunContext{
-		Run:      run,
-		Session:  session,
-		Messages: messages,
-		Cancel:   cancel,
+		Run:          run,
+		Session:      session,
+		Messages:     messages,
+		Cancel:       cancel,
+		pauseSignal:  make(chan struct{}, 1),
+		resumeSignal: make(chan struct{}, 1),
 	}
 
 	r.mu.Lock()
@@ -236,7 +345,24 @@ func (r *Runtime) runAgentLoop(ctx context.Context, runCtx *RunContext) error {
 	iteration := 0
 
 	for iteration < maxIterations {
+		// Check for pause signal
 		select {
+		case <-runCtx.pauseSignal:
+			// Handle pause - wait for resume signal
+			r.publishEvent(runCtx.Run.ID, store.EventTypeTextDelta, map[string]any{
+				"text": "\n[Run paused by user. Use /runs/{id}/resume to continue...]\n",
+			})
+
+			// Wait for resume or context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-runCtx.resumeSignal:
+				// Continue execution
+				r.publishEvent(runCtx.Run.ID, store.EventTypeTextDelta, map[string]any{
+					"text": "\n[Run resumed by user. Continuing...]\n",
+				})
+			}
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
@@ -342,10 +468,10 @@ func (r *Runtime) handleToolCalls(ctx context.Context, runCtx *RunContext, toolC
 		if err := r.executeToolCall(ctx, runCtx, tc); err != nil {
 			// Add error result
 			errorMsg := &store.Message{
-				Role:       "tool",
-				Content:    fmt.Sprintf("Error: %v", err),
-				SessionID:  runCtx.Session.ID,
-				ToolCalls:  []store.ToolCallRef{{ID: tc.ID}},
+				Role:      "tool",
+				Content:   fmt.Sprintf("Error: %v", err),
+				SessionID: runCtx.Session.ID,
+				ToolCalls: []store.ToolCallRef{{ID: tc.ID}},
 			}
 			r.store.AddMessage(ctx, runCtx.Session.ID, errorMsg)
 			runCtx.Messages = append(runCtx.Messages, errorMsg)

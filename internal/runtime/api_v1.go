@@ -112,6 +112,10 @@ func handleNonStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runt
 			} else if run.Status == store.RunStateCancelled {
 				http.Error(w, "Run cancelled", http.StatusInternalServerError)
 				return
+
+			} else if run.Status == store.RunStatePaused || run.Status == store.RunStatePausedCheckpoint {
+				http.Error(w, "Run is paused", http.StatusAccepted)
+				return
 			}
 		}
 	}
@@ -198,6 +202,40 @@ func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime
 						},
 					},
 				}
+
+			case store.EventTypeRunPaused:
+				chunk = &OpenAIStreamChunk{
+					ID:      runID,
+					Object:  "chat.completion.chunk",
+					Created: event.Timestamp.Unix(),
+					Model:   model,
+					Choices: []OpenAIStreamChoice{
+						{
+							Index: 0,
+							Delta: OpenAIDelta{
+								Content: "\n[Run paused. Use /runs/{id}/resume to continue.]\n",
+							},
+							FinishReason: "",
+						},
+					},
+				}
+
+			case store.EventTypeRunResumed:
+				chunk = &OpenAIStreamChunk{
+					ID:      runID,
+					Object:  "chat.completion.chunk",
+					Created: event.Timestamp.Unix(),
+					Model:   model,
+					Choices: []OpenAIStreamChoice{
+						{
+							Index: 0,
+							Delta: OpenAIDelta{
+								Content: "\n[Run resumed.]\n",
+							},
+							FinishReason: "",
+						},
+					},
+				}
 			}
 
 			if chunk != nil {
@@ -269,9 +307,9 @@ type OpenAIStreamChunk struct {
 }
 
 type OpenAIStreamChoice struct {
-	Index        int          `json:"index"`
-	Delta        OpenAIDelta  `json:"delta"`
-	FinishReason string       `json:"finish_reason,omitempty"`
+	Index        int         `json:"index"`
+	Delta        OpenAIDelta `json:"delta"`
+	FinishReason string      `json:"finish_reason,omitempty"`
 }
 
 type OpenAIDelta struct {

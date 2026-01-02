@@ -53,6 +53,20 @@ func RegisterRunsAPI(mux *http.ServeMux, rt *Runtime) {
 				} else {
 					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				}
+			case "pause":
+				// /runs/{id}/pause
+				if r.Method == http.MethodPost {
+					handlePauseRun(w, r, rt, runID)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+			case "resume":
+				// /runs/{id}/resume
+				if r.Method == http.MethodPost {
+					handleResumeRun(w, r, rt, runID)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
 			default:
 				http.Error(w, "Not found", http.StatusNotFound)
 			}
@@ -173,6 +187,32 @@ func handleCancelRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "cancelled",
+		"run_id": runID,
+	})
+}
+
+func handlePauseRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+	if err := rt.PauseRun(r.Context(), runID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to pause run: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "paused",
+		"run_id": runID,
+	})
+}
+
+func handleResumeRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+	if err := rt.ResumeRun(r.Context(), runID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to resume run: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "resumed",
 		"run_id": runID,
 	})
 }

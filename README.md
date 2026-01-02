@@ -295,6 +295,30 @@ func handleMyTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 }
 ```
 
+## Testing
+
+The project includes comprehensive E2E tests that validate the complete system functionality:
+
+```bash
+# Run all tests
+make test
+
+# Run only E2E tests  
+make test-e2e
+
+# Run only unit tests
+make test-unit
+```
+
+### E2E Test Coverage
+- **Core APIs**: Run creation, retrieval, cancellation, and event streaming
+- **OpenAI Compatibility**: Both streaming and non-streaming chat completions
+- **MCP Integration**: Tool invocation and lifecycle events
+- **Concurrent Operations**: Multiple simultaneous runs
+- **Error Scenarios**: Invalid requests and edge cases
+
+See [E2E Testing Guide](docs/E2E_TESTING.md) for detailed documentation.
+
 ## Development Roadmap
 
 ### V1 (Current)

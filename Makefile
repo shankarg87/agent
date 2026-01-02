@@ -40,6 +40,16 @@ test:
 	@echo "Running tests..."
 	@go test -v ./...
 
+# Run only e2e tests
+test-e2e: build-echo
+	@echo "Running E2E tests..."
+	@go test -v ./test -timeout 30s
+
+# Run only unit tests (excluding e2e)
+test-unit:
+	@echo "Running unit tests..."
+	@go test -v ./... -short
+
 # Download dependencies
 deps:
 	@echo "Downloading dependencies..."
@@ -67,7 +77,9 @@ help:
 	@echo "  make build-echo   - Build echo MCP server only"
 	@echo "  make run          - Build and run agent daemon"
 	@echo "  make clean        - Remove built binaries"
-	@echo "  make test         - Run tests"
+	@echo "  make test         - Run all tests"
+	@echo "  make test-e2e     - Run E2E tests only"  
+	@echo "  make test-unit    - Run unit tests only"
 	@echo "  make deps         - Download dependencies"
 	@echo "  make fmt          - Format code"
 	@echo "  make lint         - Run linter"

@@ -34,46 +34,46 @@ type Store interface {
 
 // Session represents a conversation session
 type Session struct {
-	ID        string         `json:"id"`
-	TenantID  string         `json:"tenant_id"`
-	ProfileName string       `json:"profile_name"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	ID          string         `json:"id"`
+	TenantID    string         `json:"tenant_id"`
+	ProfileName string         `json:"profile_name"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 // Run represents a single execution run
 type Run struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"session_id"`
-	TenantID  string    `json:"tenant_id"`
-	Mode      string    `json:"mode"` // interactive, autonomous
-	Status    string    `json:"status"` // queued, running, paused_checkpoint, completed, failed, cancelled
-	Input     string    `json:"input,omitempty"`
-	Output    string    `json:"output,omitempty"`
-	Error     string    `json:"error,omitempty"`
+	ID        string         `json:"id"`
+	SessionID string         `json:"session_id"`
+	TenantID  string         `json:"tenant_id"`
+	Mode      string         `json:"mode"`   // interactive, autonomous
+	Status    string         `json:"status"` // queued, running, paused_checkpoint, completed, failed, cancelled
+	Input     string         `json:"input,omitempty"`
+	Output    string         `json:"output,omitempty"`
+	Error     string         `json:"error,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
 
 	// Stats
-	ToolCallCount int       `json:"tool_call_count"`
-	FailureCount  int       `json:"failure_count"`
-	CostUSD       float64   `json:"cost_usd"`
+	ToolCallCount int     `json:"tool_call_count"`
+	FailureCount  int     `json:"failure_count"`
+	CostUSD       float64 `json:"cost_usd"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 
 // Message represents a conversation message
 type Message struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"session_id"`
-	Role      string    `json:"role"` // system, user, assistant, tool
-	Content   string    `json:"content"`
-	ToolCalls []ToolCallRef `json:"tool_calls,omitempty"`
+	ID        string         `json:"id"`
+	SessionID string         `json:"session_id"`
+	Role      string         `json:"role"` // system, user, assistant, tool
+	Content   string         `json:"content"`
+	ToolCalls []ToolCallRef  `json:"tool_calls,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 type ToolCallRef struct {
@@ -112,12 +112,13 @@ type ToolCall struct {
 
 // RunState constants
 const (
-	RunStateQueued            = "queued"
-	RunStateRunning           = "running"
-	RunStatePausedCheckpoint  = "paused_checkpoint"
-	RunStateCompleted         = "completed"
-	RunStateFailed            = "failed"
-	RunStateCancelled         = "cancelled"
+	RunStateQueued           = "queued"
+	RunStateRunning          = "running"
+	RunStatePausedCheckpoint = "paused_checkpoint"
+	RunStatePaused           = "paused"
+	RunStateCompleted        = "completed"
+	RunStateFailed           = "failed"
+	RunStateCancelled        = "cancelled"
 )
 
 // ToolCallStatus constants
@@ -131,17 +132,19 @@ const (
 
 // Event types
 const (
-	EventTypeRunStarted       = "run_started"
-	EventTypeRunCompleted     = "run_completed"
-	EventTypeRunFailed        = "run_failed"
-	EventTypeRunCancelled     = "run_cancelled"
-	EventTypeTextDelta        = "text_delta"
-	EventTypeFinalText        = "final_text"
-	EventTypeToolStarted      = "tool_started"
-	EventTypeToolStdout       = "tool_stdout"
-	EventTypeToolStderr       = "tool_stderr"
-	EventTypeToolCompleted    = "tool_completed"
-	EventTypeToolFailed       = "tool_failed"
+	EventTypeRunStarted         = "run_started"
+	EventTypeRunCompleted       = "run_completed"
+	EventTypeRunFailed          = "run_failed"
+	EventTypeRunCancelled       = "run_cancelled"
+	EventTypeRunPaused          = "run_paused"
+	EventTypeRunResumed         = "run_resumed"
+	EventTypeTextDelta          = "text_delta"
+	EventTypeFinalText          = "final_text"
+	EventTypeToolStarted        = "tool_started"
+	EventTypeToolStdout         = "tool_stdout"
+	EventTypeToolStderr         = "tool_stderr"
+	EventTypeToolCompleted      = "tool_completed"
+	EventTypeToolFailed         = "tool_failed"
 	EventTypeCheckpointRequired = "checkpoint_required"
-	EventTypeArtifactCreated  = "artifact_created"
+	EventTypeArtifactCreated    = "artifact_created"
 )
