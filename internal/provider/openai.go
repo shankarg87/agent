@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/shankgan/agent/internal/config"
+	"github.com/shankarg87/agent/internal/config"
 )
 
 const openaiAPIURL = "https://api.openai.com/v1/chat/completions"

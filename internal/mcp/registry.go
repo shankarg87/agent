@@ -9,8 +9,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/shankgan/agent/internal/config"
-	"github.com/shankgan/agent/internal/logging"
+	"github.com/shankarg87/agent/internal/config"
+	"github.com/shankarg87/agent/internal/logging"
 )
 
 // Registry manages MCP server connections and tool invocations

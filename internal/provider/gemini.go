@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shankgan/agent/internal/config"
+	"github.com/shankarg87/agent/internal/config"
 )
 
 // GeminiProvider implements Provider for Google Gemini models

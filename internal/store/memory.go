@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shankgan/agent/internal/logging"
+	"github.com/shankarg87/agent/internal/logging"
 )
 
 var (

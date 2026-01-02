@@ -3,7 +3,7 @@ package events
 import (
 	"sync"
 
-	"github.com/shankgan/agent/internal/store"
+	"github.com/shankarg87/agent/internal/store"
 )
 
 // EventBus manages event subscriptions and publishing

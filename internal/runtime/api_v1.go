@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shankgan/agent/internal/store"
+	"github.com/shankarg87/agent/internal/store"
 )
 
 // RegisterV1API registers the OpenAI-compatible /v1 API endpoints

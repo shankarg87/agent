@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shankgan/agent/internal/store"
+	"github.com/shankarg87/agent/internal/store"
 )
 
 // RegisterRunsAPI registers the /runs API endpoints

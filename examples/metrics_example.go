@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/shankgan/agent/internal/metrics"
+	"github.com/shankarg87/agent/internal/metrics"
 )
 
 func main() {

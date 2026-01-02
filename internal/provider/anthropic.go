@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shankgan/agent/internal/config"
-	"github.com/shankgan/agent/internal/logging"
+	"github.com/shankarg87/agent/internal/config"
+	"github.com/shankarg87/agent/internal/logging"
 )
 
 const anthropicAPIURL = "https://api.anthropic.com/v1/messages"

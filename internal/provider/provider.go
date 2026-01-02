@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shankgan/agent/internal/config"
+	"github.com/shankarg87/agent/internal/config"
 )
 
 // Provider defines the interface for LLM providers

@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shankgan/agent/internal/config"
-	"github.com/shankgan/agent/internal/events"
-	"github.com/shankgan/agent/internal/logging"
-	"github.com/shankgan/agent/internal/mcp"
-	"github.com/shankgan/agent/internal/metrics"
-	"github.com/shankgan/agent/internal/provider"
-	"github.com/shankgan/agent/internal/store"
+	"github.com/shankarg87/agent/internal/config"
+	"github.com/shankarg87/agent/internal/events"
+	"github.com/shankarg87/agent/internal/logging"
+	"github.com/shankarg87/agent/internal/mcp"
+	"github.com/shankarg87/agent/internal/metrics"
+	"github.com/shankarg87/agent/internal/provider"
+	"github.com/shankarg87/agent/internal/store"
 )
 
 // Runtime manages the agent execution environment
