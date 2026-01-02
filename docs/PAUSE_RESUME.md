@@ -47,7 +47,7 @@ POST /runs/{id}/resume
 **Response:**
 ```json
 {
-  "status": "resumed", 
+  "status": "resumed",
   "run_id": "run-123"
 }
 ```
@@ -64,7 +64,7 @@ POST /runs/{id}/resume
 
 2. **State Persistence**: The paused state is persisted in the store, so paused runs survive server restarts.
 
-3. **Event Streaming**: 
+3. **Event Streaming**:
    - Pause/resume events are sent through the event stream
    - Users monitoring `/runs/{id}/events` will receive real-time notifications
    - OpenAI-compatible streaming API includes pause/resume notifications in the stream
@@ -82,7 +82,7 @@ POST /runs/{id}/resume
 # Pause a running run
 curl -X POST http://localhost:8080/runs/run-123/pause
 
-# Resume a paused run  
+# Resume a paused run
 curl -X POST http://localhost:8080/runs/run-123/resume
 
 # Check run status
@@ -99,7 +99,7 @@ if err != nil {
 }
 
 // Resume a run
-err = runtime.ResumeRun(ctx, "run-123") 
+err = runtime.ResumeRun(ctx, "run-123")
 if err != nil {
     log.Printf("Failed to resume run: %v", err)
 }
@@ -133,7 +133,7 @@ The main agent loop (`runAgentLoop`) checks for pause signals at the beginning o
 ## Error Handling
 
 - **Invalid State Transitions**: Attempting to pause a non-running run or resume a non-paused run returns an error
-- **Run Not Found**: Operations on non-existent runs return appropriate 404 errors  
+- **Run Not Found**: Operations on non-existent runs return appropriate 404 errors
 - **Concurrent Operations**: Multiple pause/resume calls are handled safely
 
 ## Compatibility
@@ -151,6 +151,6 @@ The main agent loop (`runAgentLoop`) checks for pause signals at the beginning o
 ## Future Enhancements
 
 - **Scheduled Pausing**: Automatic pausing after specified durations
-- **Conditional Pausing**: Pause based on cost thresholds or other conditions  
+- **Conditional Pausing**: Pause based on cost thresholds or other conditions
 - **Batch Operations**: Pause/resume multiple runs at once
 - **Pause Reasons**: Track and display why a run was paused

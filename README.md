@@ -69,13 +69,13 @@ export AGENT_ADDR=:9000
 #### Dynamic Configuration
 The agent now supports dynamic configuration reloading:
 - Configuration files are automatically watched for changes
-- New runs use updated configuration immediately  
+- New runs use updated configuration immediately
 - Existing runs continue with their original configuration
 - See [docs/DYNAMIC_CONFIG.md](docs/DYNAMIC_CONFIG.md) for details
 
 #### CLI Flags
 - `--config`: Path to agent configuration file (default: `configs/agents/default.yaml`)
-- `--mcp-config`: Path to MCP servers configuration file (default: `configs/mcp/servers.yaml`) 
+- `--mcp-config`: Path to MCP servers configuration file (default: `configs/mcp/servers.yaml`)
 - `--addr`: HTTP server address (default: `:8080`)
 - `--watch-config`: Enable configuration file watching (default: `true`)
 
@@ -326,7 +326,7 @@ The project includes comprehensive E2E tests that validate the complete system f
 # Run all tests
 make test
 
-# Run only E2E tests  
+# Run only E2E tests
 make test-e2e
 
 # Run only unit tests
@@ -364,6 +364,34 @@ See [E2E Testing Guide](docs/E2E_TESTING.md) for detailed documentation.
 ## Contributing
 
 This is an early-stage project. Contributions welcome!
+
+### Development Setup
+
+1. **Clone and build**:
+   ```bash
+   git clone <repo>
+   cd agent
+   make deps
+   make build
+   ```
+
+2. **Set up pre-commit hooks** (recommended):
+   ```bash
+   make install-hooks
+   ```
+   This installs Git pre-commit hooks that automatically run code formatting, linting, tests, and security checks before each commit. See [Pre-commit Setup Guide](docs/PRE_COMMIT_SETUP.md) for details.
+
+3. **Run tests**:
+   ```bash
+   make test-unit    # Unit tests only
+   make test-e2e     # E2E tests only
+   make test         # All tests
+   ```
+
+4. **Run full CI checks**:
+   ```bash
+   make ci-check     # What CI will run
+   ```
 
 ## License
 

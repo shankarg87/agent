@@ -38,3 +38,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# Pre-commit
+.pre-commit-cache/

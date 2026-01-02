@@ -14,14 +14,14 @@ type MCPConfig struct {
 
 // MCPServerConfig represents a single MCP server configuration
 type MCPServerConfig struct {
-	Name       string        `yaml:"name"`
-	Transport  string        `yaml:"transport"` // stdio, http
-	Endpoint   string        `yaml:"endpoint"`  // command for stdio, URL for http
-	Args       []string      `yaml:"args,omitempty"`
+	Name       string            `yaml:"name"`
+	Transport  string            `yaml:"transport"` // stdio, http
+	Endpoint   string            `yaml:"endpoint"`  // command for stdio, URL for http
+	Args       []string          `yaml:"args,omitempty"`
 	Env        map[string]string `yaml:"env,omitempty"`
-	Timeout    time.Duration `yaml:"timeout,omitempty"`
-	RetryMax   int           `yaml:"retry_max,omitempty"`
-	RetryDelay time.Duration `yaml:"retry_delay,omitempty"`
+	Timeout    time.Duration     `yaml:"timeout,omitempty"`
+	RetryMax   int               `yaml:"retry_max,omitempty"`
+	RetryDelay time.Duration     `yaml:"retry_delay,omitempty"`
 }
 
 // LoadMCPConfig loads MCP server configurations from a YAML file

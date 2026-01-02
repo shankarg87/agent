@@ -4,11 +4,11 @@ The agent supports comprehensive metrics collection through a flexible, pluggabl
 
 ## Features
 
-✅ **Dual Backend Support**: Both Prometheus and OpenTelemetry  
-✅ **Zero Vendor Lock-in**: Switch backends via configuration  
-✅ **Production Ready**: Low overhead, high cardinality protection  
-✅ **Comprehensive Coverage**: Runtime, tools, LLM, HTTP metrics  
-✅ **Configuration Driven**: Enable/disable via YAML config  
+✅ **Dual Backend Support**: Both Prometheus and OpenTelemetry
+✅ **Zero Vendor Lock-in**: Switch backends via configuration
+✅ **Production Ready**: Low overhead, high cardinality protection
+✅ **Comprehensive Coverage**: Runtime, tools, LLM, HTTP metrics
+✅ **Configuration Driven**: Enable/disable via YAML config
 
 ## Architecture
 
@@ -16,7 +16,7 @@ The agent supports comprehensive metrics collection through a flexible, pluggabl
 Agent Runtime
     ↓
 AgentMetrics (high-level wrapper)
-    ↓  
+    ↓
 Provider Interface (prometheus | otel)
     ↓
 Metrics Destination (Prometheus Server | OTEL Collector | etc)
@@ -43,7 +43,7 @@ metrics_config:
   namespace: "agent"
   prometheus:
     path: "/metrics"
-    registry: "default" 
+    registry: "default"
     labels:
       service: "agent-runtime"
       environment: "production"
@@ -111,10 +111,10 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     labels:
-      - "prometheus.io/scrape=true" 
+      - "prometheus.io/scrape=true"
       - "prometheus.io/port=8080"
       - "prometheus.io/path=/metrics"
-      
+
   prometheus:
     image: prom/prometheus:latest
     ports:
@@ -175,7 +175,7 @@ spec:
         configMap:
           name: agent-config
 ---
-apiVersion: v1  
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: agent-config
@@ -198,7 +198,7 @@ data:
 
 **Run Success Rate:**
 ```promql
-rate(agent_runs_completed_total{status="completed"}[5m]) / 
+rate(agent_runs_completed_total{status="completed"}[5m]) /
 rate(agent_runs_created_total[5m]) * 100
 ```
 
@@ -231,7 +231,7 @@ groups:
       severity: warning
     annotations:
       summary: "High run failure rate detected"
-      
+
   - alert: LLMProviderDown
     expr: rate(agent_llm_requests_total{status="error"}[5m]) > 0.5
     for: 1m
@@ -244,7 +244,7 @@ groups:
 ## Performance Considerations
 
 - **Label Cardinality**: UUIDs and dynamic values are templated to prevent metric explosion
-- **Sampling**: Histograms use exponential buckets optimized for typical agent workloads  
+- **Sampling**: Histograms use exponential buckets optimized for typical agent workloads
 - **Buffering**: OpenTelemetry uses periodic export to reduce overhead
 - **Memory**: No-op provider available when metrics are disabled
 

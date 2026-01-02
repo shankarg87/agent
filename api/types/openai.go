@@ -59,21 +59,21 @@ type OpenAIDelta struct {
 // OpenAI Responses API types for /v1/responses
 
 type ResponsesRequest struct {
-	Model       string   `json:"model"`
+	Model       string          `json:"model"`
 	Messages    []OpenAIMessage `json:"messages"` // Similar to chat, but could have different structure
-	MaxTokens   int      `json:"max_tokens,omitempty"`
-	Temperature float64  `json:"temperature,omitempty"`
-	Stream      bool     `json:"stream,omitempty"`
-	Store       bool     `json:"store,omitempty"` // Responses are stored by default
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Temperature float64         `json:"temperature,omitempty"`
+	Stream      bool            `json:"stream,omitempty"`
+	Store       bool            `json:"store,omitempty"` // Responses are stored by default
 }
 
 type ResponsesResponse struct {
-	ID      string         `json:"id"`
-	Object  string         `json:"object"` // "response"
-	Created int64          `json:"created"`
-	Model   string         `json:"model"`
+	ID      string           `json:"id"`
+	Object  string           `json:"object"` // "response"
+	Created int64            `json:"created"`
+	Model   string           `json:"model"`
 	Choices []ResponseChoice `json:"choices"`
-	Usage   OpenAIUsage    `json:"usage"`
+	Usage   OpenAIUsage      `json:"usage"`
 }
 
 type ResponseChoice struct {

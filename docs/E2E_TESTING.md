@@ -25,7 +25,7 @@ E2E tests are located in `/test/e2e_test.go`
 
 2. **OpenAI-Compatible API Tests** (`TestOpenAICompatibleAPI`)
    - Non-streaming chat completions
-   - Streaming chat completions  
+   - Streaming chat completions
    - OpenAI response format validation
 
 3. **MCP Tool Integration Tests** (`TestMCPToolIntegration`)
@@ -61,7 +61,7 @@ make test-e2e
 # Core API tests only
 go test ./test -v -run TestRunsAPI
 
-# OpenAI API tests only  
+# OpenAI API tests only
 go test ./test -v -run TestOpenAICompatibleAPI
 
 # MCP integration tests only
@@ -116,7 +116,7 @@ The E2E tests require the echo MCP server to be built:
 func TestNewFeature(t *testing.T) {
     ts := setupTestServer(t)
     defer ts.Close()
-    
+
     t.Run("SpecificScenario", func(t *testing.T) {
         // Test implementation
     })
@@ -227,6 +227,6 @@ case <-time.After(timeout):
 
 The E2E tests are designed to run in CI environments:
 - No external dependencies (beyond built binaries)
-- Deterministic behavior via mock providers  
+- Deterministic behavior via mock providers
 - Proper cleanup and resource management
 - Clear pass/fail criteria with meaningful error messages

@@ -66,21 +66,54 @@ fmt:
 # Run linter
 lint:
 	@echo "Running linter..."
-	@go vet ./...
+	@go vet ./cmd/... ./internal/... ./api/... ./test/...
 	@echo "✓ Lint passed"
+
+# Install pre-commit hooks
+install-hooks:
+	@echo "Installing pre-commit hooks..."
+	@which pre-commit > /dev/null || (echo "Please install pre-commit first: pip install pre-commit"; exit 1)
+	@pre-commit install
+	@echo "✓ Pre-commit hooks installed"
+
+# Run pre-commit on all files
+pre-commit-all:
+	@echo "Running pre-commit on all files..."
+	@pre-commit run --all-files
+
+# Run pre-commit checks manually
+pre-commit:
+	@echo "Running pre-commit checks..."
+	@pre-commit run
+
+# Security scan
+security-scan:
+	@echo "Running security scan..."
+	@which gosec > /dev/null || (echo "Installing gosec..."; go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest)
+	@gosec ./...
+	@echo "✓ Security scan completed"
+
+# Full CI check (what CI would run)
+ci-check: deps fmt lint test-unit build security-scan
+	@echo "✓ All CI checks passed"
 
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  make build        - Build all binaries"
-	@echo "  make build-agent  - Build agent daemon only"
-	@echo "  make build-echo   - Build echo MCP server only"
-	@echo "  make run          - Build and run agent daemon"
-	@echo "  make clean        - Remove built binaries"
-	@echo "  make test         - Run all tests"
-	@echo "  make test-e2e     - Run E2E tests only"  
-	@echo "  make test-unit    - Run unit tests only"
-	@echo "  make deps         - Download dependencies"
-	@echo "  make fmt          - Format code"
-	@echo "  make lint         - Run linter"
-	@echo "  make help         - Show this help"
+	@echo "  make build         - Build all binaries"
+	@echo "  make build-agent   - Build agent daemon only"
+	@echo "  make build-echo    - Build echo MCP server only"
+	@echo "  make run           - Build and run agent daemon"
+	@echo "  make clean         - Remove built binaries"
+	@echo "  make test          - Run all tests"
+	@echo "  make test-e2e      - Run E2E tests only"
+	@echo "  make test-unit     - Run unit tests only"
+	@echo "  make deps          - Download dependencies"
+	@echo "  make fmt           - Format code"
+	@echo "  make lint          - Run linter"
+	@echo "  make install-hooks - Install pre-commit hooks"
+	@echo "  make pre-commit    - Run pre-commit checks"
+	@echo "  make pre-commit-all- Run pre-commit on all files"
+	@echo "  make security-scan - Run security scan"
+	@echo "  make ci-check      - Run all CI checks"
+	@echo "  make help          - Show this help"

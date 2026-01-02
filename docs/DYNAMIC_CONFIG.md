@@ -29,7 +29,7 @@ export AGENT_ADDR=:9000
 ### Environment Variables
 All CLI flags can be set via environment variables with the `AGENT_` prefix:
 - `AGENT_CONFIG` - Agent configuration file path
-- `AGENT_MCP_CONFIG` - MCP configuration file path  
+- `AGENT_MCP_CONFIG` - MCP configuration file path
 - `AGENT_ADDR` - Server address
 - `AGENT_WATCH_CONFIG` - Enable/disable config watching (true/false)
 

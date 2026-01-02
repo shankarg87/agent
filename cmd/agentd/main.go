@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,31 +20,57 @@ import (
 	"github.com/shankarg87/agent/internal/provider"
 	"github.com/shankarg87/agent/internal/runtime"
 	"github.com/shankarg87/agent/internal/store"
-	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
+	"github.com/spf13/cobra"
 )
 
+var (
+	configPath    string
+	mcpConfigPath string
+	addr          string
+	watchConfig   bool
+	verbose       bool
+)
+
+var rootCmd = &cobra.Command{
+	Use:   "agentd",
+	Short: "Agent daemon server",
+	Long:  "A Swiss Army Knife agent runtime that supports interactive and autonomous modes with MCP tooling",
+	Run:   runServer,
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", "configs/agents/default.yaml", "path to agent config file")
+	rootCmd.PersistentFlags().StringVar(&mcpConfigPath, "mcp-config", "configs/mcp/servers.yaml", "path to MCP servers config")
+	rootCmd.PersistentFlags().StringVar(&addr, "addr", ":8080", "HTTP server address")
+	rootCmd.PersistentFlags().BoolVar(&watchConfig, "watch-config", true, "enable automatic config reloading")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose logging")
+}
+
 func main() {
-	// Setup CLI flags
-	pflag.String("config", "configs/agents/default.yaml", "path to agent config file")
-	pflag.String("mcp-config", "configs/mcp/servers.yaml", "path to MCP servers config")
-	pflag.String("addr", ":8080", "HTTP server address")
-	pflag.Bool("watch-config", true, "enable automatic config reloading")
-	pflag.Bool("verbose", false, "enable verbose logging")
-	pflag.Parse()
+	// Check for environment variables and override flags if set
+	if val := os.Getenv("AGENT_CONFIG"); val != "" {
+		configPath = val
+	}
+	if val := os.Getenv("AGENT_MCP_CONFIG"); val != "" {
+		mcpConfigPath = val
+	}
+	if val := os.Getenv("AGENT_ADDR"); val != "" {
+		addr = val
+	}
+	if val := os.Getenv("AGENT_WATCH_CONFIG"); val != "" {
+		watchConfig = val == "true"
+	}
+	if val := os.Getenv("AGENT_VERBOSE"); val != "" {
+		verbose = val == "true"
+	}
 
-	// Setup Viper to handle CLI flags and environment variables
-	viper.BindPFlags(pflag.CommandLine)
-	viper.SetEnvPrefix("AGENT") // Environment variables like AGENT_CONFIG, AGENT_ADDR
-	viper.AutomaticEnv()
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	// Get configuration values
-	configPath := viper.GetString("config")
-	mcpConfigPath := viper.GetString("mcp-config")
-	addr := viper.GetString("addr")
-	watchConfig := viper.GetBool("watch-config")
-	verbose := viper.GetBool("verbose")
-
+func runServer(cmd *cobra.Command, args []string) {
 	// Initialize logger
 	var logger *logging.SimpleLogger
 	if verbose {

@@ -13,18 +13,18 @@ type MessagesRequest struct {
 }
 
 type AnthropicMessage struct {
-	Role    string              `json:"role"` // "user" | "assistant"
-	Content interface{}         `json:"content"` // Can be string or []AnthropicContent
+	Role    string      `json:"role"`    // "user" | "assistant"
+	Content interface{} `json:"content"` // Can be string or []AnthropicContent
 }
 
 type AnthropicContent struct {
 	Type      string      `json:"type"` // "text" | "tool_use" | "tool_result"
 	Text      string      `json:"text,omitempty"`
-	ID        string      `json:"id,omitempty"`       // For tool_use
-	Name      string      `json:"name,omitempty"`     // For tool_use
-	Input     interface{} `json:"input,omitempty"`    // For tool_use
+	ID        string      `json:"id,omitempty"`          // For tool_use
+	Name      string      `json:"name,omitempty"`        // For tool_use
+	Input     interface{} `json:"input,omitempty"`       // For tool_use
 	ToolUseID string      `json:"tool_use_id,omitempty"` // For tool_result
-	Content   string      `json:"content,omitempty"`  // For tool_result
+	Content   string      `json:"content,omitempty"`     // For tool_result
 }
 
 type AnthropicTool struct {
@@ -34,14 +34,14 @@ type AnthropicTool struct {
 }
 
 type MessagesResponse struct {
-	ID           string              `json:"id"`
-	Type         string              `json:"type"` // "message"
-	Role         string              `json:"role"` // "assistant"
-	Content      []AnthropicContent  `json:"content"`
-	Model        string              `json:"model"`
-	StopReason   string              `json:"stop_reason,omitempty"`
-	StopSequence string              `json:"stop_sequence,omitempty"`
-	Usage        AnthropicUsage      `json:"usage"`
+	ID           string             `json:"id"`
+	Type         string             `json:"type"` // "message"
+	Role         string             `json:"role"` // "assistant"
+	Content      []AnthropicContent `json:"content"`
+	Model        string             `json:"model"`
+	StopReason   string             `json:"stop_reason,omitempty"`
+	StopSequence string             `json:"stop_sequence,omitempty"`
+	Usage        AnthropicUsage     `json:"usage"`
 }
 
 type AnthropicUsage struct {
@@ -57,11 +57,11 @@ type MessageStartEvent struct {
 }
 
 type MessageMetadata struct {
-	ID     string         `json:"id"`
-	Type   string         `json:"type"` // "message"
-	Role   string         `json:"role"` // "assistant"
-	Model  string         `json:"model"`
-	Usage  AnthropicUsage `json:"usage"`
+	ID    string         `json:"id"`
+	Type  string         `json:"type"` // "message"
+	Role  string         `json:"role"` // "assistant"
+	Model string         `json:"model"`
+	Usage AnthropicUsage `json:"usage"`
 }
 
 type ContentBlockStart struct {
@@ -87,7 +87,7 @@ type ContentBlockStop struct {
 }
 
 type MessageDelta struct {
-	Type  string          `json:"type"` // "message_delta"
+	Type  string           `json:"type"` // "message_delta"
 	Delta MessageDeltaData `json:"delta"`
 	Usage AnthropicUsage   `json:"usage,omitempty"`
 }
@@ -103,9 +103,9 @@ type MessageStop struct {
 
 // Custom extension for tool execution visibility
 type AgentToolExecution struct {
-	ToolName   string      `json:"tool_name"`
-	Arguments  interface{} `json:"arguments"`
-	Output     interface{} `json:"output"`
-	Status     string      `json:"status"` // "started" | "completed" | "failed"
-	Error      string      `json:"error,omitempty"`
+	ToolName  string      `json:"tool_name"`
+	Arguments interface{} `json:"arguments"`
+	Output    interface{} `json:"output"`
+	Status    string      `json:"status"` // "started" | "completed" | "failed"
+	Error     string      `json:"error,omitempty"`
 }

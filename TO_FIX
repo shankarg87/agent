@@ -1,0 +1,6 @@
+* Integrate with the pre-commit tool using several standard go-lang hooks.
+* Bug: Agent watcher config should check if dynamic is enabled, currently its not in manager.go
+* Need to add a lot more validations in manager.go
+* Add the ability to compress previous chat conversations
+* MCP tool call pausing and permissions are not handled correctly. Pausing is only done on manual request
+* Fix failing examples and e2e tests
