@@ -9,7 +9,7 @@ import (
 
 func TestEventBus_Subscribe(t *testing.T) {
 	bus := NewEventBus()
-	
+
 	// Test subscription
 	ch := bus.Subscribe("run-1")
 	assertNotNil(t, ch)
@@ -39,18 +39,18 @@ func TestEventBus_Subscribe(t *testing.T) {
 
 func TestEventBus_Publish(t *testing.T) {
 	bus := NewEventBus()
-	
+
 	// Subscribe to run-1
 	ch1 := bus.Subscribe("run-1")
 	ch2 := bus.Subscribe("run-1")
-	
+
 	// Subscribe to run-2
 	ch3 := bus.Subscribe("run-2")
 
 	// Create test events
 	event1 := &store.Event{
 		ID:        "event-1",
-		RunID:     "run-1", 
+		RunID:     "run-1",
 		Type:      store.EventTypeRunStarted,
 		Data:      map[string]any{"test": true},
 		Timestamp: time.Now(),
@@ -59,7 +59,7 @@ func TestEventBus_Publish(t *testing.T) {
 	event2 := &store.Event{
 		ID:        "event-2",
 		RunID:     "run-2",
-		Type:      store.EventTypeTextDelta, 
+		Type:      store.EventTypeTextDelta,
 		Data:      map[string]any{"text": "hello"},
 		Timestamp: time.Now(),
 	}
@@ -109,7 +109,7 @@ func TestEventBus_Publish(t *testing.T) {
 
 func TestEventBus_Unsubscribe(t *testing.T) {
 	bus := NewEventBus()
-	
+
 	// Subscribe
 	ch1 := bus.Subscribe("run-1")
 	ch2 := bus.Subscribe("run-1")
@@ -157,7 +157,7 @@ func TestEventBus_Unsubscribe(t *testing.T) {
 
 func TestEventBus_CloseAll(t *testing.T) {
 	bus := NewEventBus()
-	
+
 	// Subscribe multiple channels
 	ch1 := bus.Subscribe("run-1")
 	ch2 := bus.Subscribe("run-1")
@@ -239,7 +239,7 @@ func TestEventBus_ChannelBuffer(t *testing.T) {
 
 func TestEventBus_PublishToNonExistentRun(t *testing.T) {
 	bus := NewEventBus()
-	
+
 	// Publishing to non-existent run should not panic
 	event := &store.Event{
 		ID:        "event-1",
@@ -260,10 +260,10 @@ func TestEventBus_PublishToNonExistentRun(t *testing.T) {
 
 func TestEventBus_UnsubscribeNonExistentChannel(t *testing.T) {
 	bus := NewEventBus()
-	
+
 	// Create a channel but don't subscribe it
 	ch := make(chan *store.Event)
-	
+
 	// Unsubscribing non-existent channel should not panic
 	bus.Unsubscribe("run-1", ch)
 

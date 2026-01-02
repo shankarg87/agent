@@ -743,6 +743,21 @@ func (r *Runtime) getActiveRunCountForTenant(tenantID string) int {
 	return count
 }
 
+// GetEvents retrieves events for a run from the store
+func (r *Runtime) GetEvents(ctx context.Context, runID string) ([]*store.Event, error) {
+	return r.store.GetEvents(ctx, runID)
+}
+
+// SubscribeToEvents subscribes to events for a run
+func (r *Runtime) SubscribeToEvents(runID string) <-chan *store.Event {
+	return r.eventBus.Subscribe(runID)
+}
+
+// UnsubscribeFromEvents unsubscribes from events for a run
+func (r *Runtime) UnsubscribeFromEvents(runID string, ch <-chan *store.Event) {
+	r.eventBus.Unsubscribe(runID, ch)
+}
+
 // CreateRunRequest represents a request to create a new run
 type CreateRunRequest struct {
 	SessionID string         `json:"session_id,omitempty"`

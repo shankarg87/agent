@@ -69,7 +69,7 @@ func TestMCPServer_Structure(t *testing.T) {
 	assertEqual(t, 30*time.Second, server.Config.Timeout)
 	assertEqual(t, 3, server.Config.RetryMax)
 	assertEqual(t, 1*time.Second, server.Config.RetryDelay)
-	
+
 	assertEqual(t, 1, len(server.Tools))
 	tool := server.Tools["test-tool"]
 	assertNotNil(t, tool)
@@ -100,15 +100,15 @@ func TestTool_Structure(t *testing.T) {
 	assertEqual(t, "echo_tool", tool.Name)
 	assertEqual(t, "Echoes input back", tool.Description)
 	assertEqual(t, "echo-server", tool.ServerName)
-	
+
 	assertEqual(t, "object", tool.InputSchema["type"])
 	properties := tool.InputSchema["properties"].(map[string]any)
 	assertNotNil(t, properties)
-	
+
 	message := properties["message"].(map[string]any)
 	assertEqual(t, "string", message["type"])
 	assertEqual(t, "Message to echo", message["description"])
-	
+
 	required := tool.InputSchema["required"].([]string)
 	assertEqual(t, 1, len(required))
 	assertEqual(t, "message", required[0])
@@ -175,7 +175,7 @@ func TestContentBlock_Types(t *testing.T) {
 	assertEqual(t, "resource", dataBlock.Type)
 	assertEqual(t, "", dataBlock.Text)
 	assertNotNil(t, dataBlock.Data)
-	
+
 	data := dataBlock.Data.(map[string]any)
 	assertEqual(t, "file:///path/to/file.txt", data["uri"])
 	assertEqual(t, "text/plain", data["mime"])
@@ -271,16 +271,16 @@ func assertNil(t *testing.T, value any) {
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		   (len(s) > len(substr) && 
-		    (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		     func() bool {
-		     	for i := 0; i <= len(s)-len(substr); i++ {
-		     		if s[i:i+len(substr)] == substr {
-		     			return true
-		     		}
-		     	}
-		     	return false
-		     }())))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+					func() bool {
+						for i := 0; i <= len(s)-len(substr); i++ {
+							if s[i:i+len(substr)] == substr {
+								return true
+							}
+						}
+						return false
+					}())))
 }

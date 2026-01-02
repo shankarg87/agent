@@ -13,7 +13,7 @@ func TestInMemoryStore_Sessions(t *testing.T) {
 	// Test CreateSession
 	session := &Session{
 		ID:          "test-session-1",
-		TenantID:    "tenant-1", 
+		TenantID:    "tenant-1",
 		ProfileName: "test-profile",
 		Metadata:    map[string]any{"key": "value"},
 	}
@@ -110,7 +110,7 @@ func TestInMemoryStore_Runs(t *testing.T) {
 	retrieved.Status = RunStateRunning
 	retrieved.StartedAt = &time.Time{}
 	*retrieved.StartedAt = time.Now()
-	
+
 	err = store.UpdateRun(ctx, retrieved)
 	assertNoError(t, err)
 
@@ -158,7 +158,7 @@ func TestInMemoryStore_Messages(t *testing.T) {
 	assertNotNil(t, message1.CreatedAt)
 
 	message2 := &Message{
-		ID:        "msg-2", 
+		ID:        "msg-2",
 		SessionID: "session-1",
 		Role:      "assistant",
 		Content:   "Hi there!",
@@ -190,10 +190,10 @@ func TestInMemoryStore_Events(t *testing.T) {
 
 	// Test AddEvent
 	event1 := &Event{
-		ID:     "event-1",
-		RunID:  "run-1",
-		Type:   EventTypeRunStarted,
-		Data:   map[string]any{"run_id": "run-1"},
+		ID:    "event-1",
+		RunID: "run-1",
+		Type:  EventTypeRunStarted,
+		Data:  map[string]any{"run_id": "run-1"},
 	}
 
 	err := store.AddEvent(ctx, "run-1", event1)
@@ -202,7 +202,7 @@ func TestInMemoryStore_Events(t *testing.T) {
 
 	event2 := &Event{
 		ID:    "event-2",
-		RunID: "run-1", 
+		RunID: "run-1",
 		Type:  EventTypeTextDelta,
 		Data:  map[string]any{"text": "Hello"},
 	}
@@ -258,7 +258,7 @@ func TestInMemoryStore_ToolCalls(t *testing.T) {
 	toolCalls, err := store.GetToolCalls(ctx, "run-1")
 	assertNoError(t, err)
 	assertEqual(t, 1, len(toolCalls))
-	
+
 	retrieved := toolCalls[0]
 	assertEqual(t, "tool-1", retrieved.ID)
 	assertEqual(t, "run-1", retrieved.RunID)
@@ -274,7 +274,7 @@ func TestInMemoryStore_ToolCalls(t *testing.T) {
 		ID:         "tool-2",
 		RunID:      "run-1",
 		ToolName:   "uppercase",
-		ServerName: "echo-server", 
+		ServerName: "echo-server",
 		Arguments:  map[string]any{"text": "world"},
 		Status:     ToolCallStatusFailed,
 		Error:      "some error",

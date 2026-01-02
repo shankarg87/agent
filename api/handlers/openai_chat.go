@@ -1,4 +1,4 @@
-package runtime
+package handlers
 
 import (
 	"encoding/json"
@@ -6,11 +6,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/shankarg87/agent/api/streaming"
+	"github.com/shankarg87/agent/api/types"
+	"github.com/shankarg87/agent/internal/runtime"
 	"github.com/shankarg87/agent/internal/store"
 )
 
-// RegisterV1API registers the OpenAI-compatible /v1 API endpoints
-func RegisterV1API(mux *http.ServeMux, rt *Runtime) {
+// RegisterOpenAIChatAPI registers the OpenAI-compatible /v1/chat/completions endpoint
+func RegisterOpenAIChatAPI(mux *http.ServeMux, rt *runtime.Runtime) {
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -20,8 +23,8 @@ func RegisterV1API(mux *http.ServeMux, rt *Runtime) {
 	})
 }
 
-func handleChatCompletions(w http.ResponseWriter, r *http.Request, rt *Runtime) {
-	var req OpenAIChatRequest
+func handleChatCompletions(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime) {
+	var req types.OpenAIChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 		return
@@ -37,7 +40,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request, rt *Runtime) 
 	}
 
 	// Create a run (each chat completion creates a new run)
-	createReq := &CreateRunRequest{
+	createReq := &runtime.CreateRunRequest{
 		TenantID: "default", // TODO: extract from auth
 		Mode:     "interactive",
 		Input:    input,
@@ -57,7 +60,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request, rt *Runtime) 
 	}
 }
 
-func handleNonStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string, model string) {
+func handleNonStreamingResponse(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string, model string) {
 	// Poll for completion
 	timeout := time.After(5 * time.Minute)
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -79,22 +82,22 @@ func handleNonStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runt
 
 			if run.Status == store.RunStateCompleted {
 				// Build OpenAI response
-				resp := OpenAIChatResponse{
+				resp := types.OpenAIChatResponse{
 					ID:      runID,
 					Object:  "chat.completion",
 					Created: run.CreatedAt.Unix(),
 					Model:   model,
-					Choices: []OpenAIChoice{
+					Choices: []types.OpenAIChoice{
 						{
 							Index: 0,
-							Message: OpenAIMessage{
+							Message: types.OpenAIMessage{
 								Role:    "assistant",
 								Content: run.Output,
 							},
 							FinishReason: "stop",
 						},
 					},
-					Usage: OpenAIUsage{
+					Usage: types.OpenAIUsage{
 						PromptTokens:     0, // TODO: track tokens
 						CompletionTokens: 0,
 						TotalTokens:      0,
@@ -121,21 +124,19 @@ func handleNonStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runt
 	}
 }
 
-func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string, model string) {
+func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string, model string) {
 	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	streaming.SetSSEHeaders(w)
 
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := streaming.GetFlusher(w)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	// Subscribe to events
-	eventChan := rt.eventBus.Subscribe(runID)
-	defer rt.eventBus.Unsubscribe(runID, eventChan)
+	eventChan := rt.SubscribeToEvents(runID)
+	defer rt.UnsubscribeFromEvents(runID, eventChan)
 
 	chunkIndex := 0
 
@@ -147,26 +148,26 @@ func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime
 		case event, ok := <-eventChan:
 			if !ok {
 				// Send [DONE]
-				fmt.Fprintf(w, "data: [DONE]\n\n")
+				streaming.WriteSSEDone(w)
 				flusher.Flush()
 				return
 			}
 
 			// Convert our events to OpenAI streaming format
-			var chunk *OpenAIStreamChunk
+			var chunk *types.OpenAIStreamChunk
 
 			switch event.Type {
 			case store.EventTypeTextDelta:
 				text, _ := event.Data["text"].(string)
-				chunk = &OpenAIStreamChunk{
+				chunk = &types.OpenAIStreamChunk{
 					ID:      runID,
 					Object:  "chat.completion.chunk",
 					Created: event.Timestamp.Unix(),
 					Model:   model,
-					Choices: []OpenAIStreamChoice{
+					Choices: []types.OpenAIStreamChoice{
 						{
 							Index: 0,
-							Delta: OpenAIDelta{
+							Delta: types.OpenAIDelta{
 								Content: text,
 							},
 						},
@@ -174,45 +175,45 @@ func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime
 				}
 
 			case store.EventTypeRunCompleted:
-				chunk = &OpenAIStreamChunk{
+				chunk = &types.OpenAIStreamChunk{
 					ID:      runID,
 					Object:  "chat.completion.chunk",
 					Created: event.Timestamp.Unix(),
 					Model:   model,
-					Choices: []OpenAIStreamChoice{
+					Choices: []types.OpenAIStreamChoice{
 						{
 							Index:        0,
-							Delta:        OpenAIDelta{},
+							Delta:        types.OpenAIDelta{},
 							FinishReason: "stop",
 						},
 					},
 				}
 
 			case store.EventTypeRunFailed, store.EventTypeRunCancelled:
-				chunk = &OpenAIStreamChunk{
+				chunk = &types.OpenAIStreamChunk{
 					ID:      runID,
 					Object:  "chat.completion.chunk",
 					Created: event.Timestamp.Unix(),
 					Model:   model,
-					Choices: []OpenAIStreamChoice{
+					Choices: []types.OpenAIStreamChoice{
 						{
 							Index:        0,
-							Delta:        OpenAIDelta{},
+							Delta:        types.OpenAIDelta{},
 							FinishReason: "error",
 						},
 					},
 				}
 
 			case store.EventTypeRunPaused:
-				chunk = &OpenAIStreamChunk{
+				chunk = &types.OpenAIStreamChunk{
 					ID:      runID,
 					Object:  "chat.completion.chunk",
 					Created: event.Timestamp.Unix(),
 					Model:   model,
-					Choices: []OpenAIStreamChoice{
+					Choices: []types.OpenAIStreamChoice{
 						{
 							Index: 0,
-							Delta: OpenAIDelta{
+							Delta: types.OpenAIDelta{
 								Content: "\n[Run paused. Use /runs/{id}/resume to continue.]\n",
 							},
 							FinishReason: "",
@@ -221,15 +222,15 @@ func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime
 				}
 
 			case store.EventTypeRunResumed:
-				chunk = &OpenAIStreamChunk{
+				chunk = &types.OpenAIStreamChunk{
 					ID:      runID,
 					Object:  "chat.completion.chunk",
 					Created: event.Timestamp.Unix(),
 					Model:   model,
-					Choices: []OpenAIStreamChoice{
+					Choices: []types.OpenAIStreamChoice{
 						{
 							Index: 0,
-							Delta: OpenAIDelta{
+							Delta: types.OpenAIDelta{
 								Content: "\n[Run resumed.]\n",
 							},
 							FinishReason: "",
@@ -239,12 +240,9 @@ func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime
 			}
 
 			if chunk != nil {
-				data, err := json.Marshal(chunk)
-				if err != nil {
+				if err := streaming.WriteSSEData(w, chunk); err != nil {
 					return
 				}
-
-				fmt.Fprintf(w, "data: %s\n\n", string(data))
 				flusher.Flush()
 				chunkIndex++
 
@@ -252,67 +250,11 @@ func handleStreamingResponse(w http.ResponseWriter, r *http.Request, rt *Runtime
 				if event.Type == store.EventTypeRunCompleted ||
 					event.Type == store.EventTypeRunFailed ||
 					event.Type == store.EventTypeRunCancelled {
-					fmt.Fprintf(w, "data: [DONE]\n\n")
+					streaming.WriteSSEDone(w)
 					flusher.Flush()
 					return
 				}
 			}
 		}
 	}
-}
-
-// OpenAI API types
-
-type OpenAIChatRequest struct {
-	Model       string          `json:"model"`
-	Messages    []OpenAIMessage `json:"messages"`
-	Temperature float64         `json:"temperature,omitempty"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
-	Stop        []string        `json:"stop,omitempty"`
-}
-
-type OpenAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type OpenAIChatResponse struct {
-	ID      string         `json:"id"`
-	Object  string         `json:"object"`
-	Created int64          `json:"created"`
-	Model   string         `json:"model"`
-	Choices []OpenAIChoice `json:"choices"`
-	Usage   OpenAIUsage    `json:"usage"`
-}
-
-type OpenAIChoice struct {
-	Index        int           `json:"index"`
-	Message      OpenAIMessage `json:"message"`
-	FinishReason string        `json:"finish_reason"`
-}
-
-type OpenAIUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-type OpenAIStreamChunk struct {
-	ID      string               `json:"id"`
-	Object  string               `json:"object"`
-	Created int64                `json:"created"`
-	Model   string               `json:"model"`
-	Choices []OpenAIStreamChoice `json:"choices"`
-}
-
-type OpenAIStreamChoice struct {
-	Index        int         `json:"index"`
-	Delta        OpenAIDelta `json:"delta"`
-	FinishReason string      `json:"finish_reason,omitempty"`
-}
-
-type OpenAIDelta struct {
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content,omitempty"`
 }

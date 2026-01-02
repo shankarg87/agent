@@ -83,7 +83,7 @@ func TestNewOpenAIProvider_CustomEndpoint(t *testing.T) {
 	provider, err := NewOpenAIProvider(cfg)
 	assertNoError(t, err)
 	assertNotNil(t, provider)
-	
+
 	// We can't easily test the private endpoint field without reflection,
 	// but we know it's set correctly if NewOpenAIProvider doesn't error
 	assertEqual(t, "openai", provider.Name())
@@ -250,7 +250,7 @@ func TestOpenAIProvider_Chat_APIError(t *testing.T) {
 
 	cfg := config.ModelConfig{
 		Provider: "openai",
-		Model:    "gpt-4", 
+		Model:    "gpt-4",
 		APIKey:   "invalid-key",
 		Endpoint: server.URL,
 	}

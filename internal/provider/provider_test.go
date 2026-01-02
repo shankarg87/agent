@@ -8,10 +8,10 @@ import (
 
 func TestNewProvider(t *testing.T) {
 	tests := []struct {
-		name          string
-		config        config.ModelConfig
-		expectedType  string
-		shouldError   bool
+		name         string
+		config       config.ModelConfig
+		expectedType string
+		shouldError  bool
 	}{
 		{
 			name: "OpenAI provider",
@@ -24,7 +24,7 @@ func TestNewProvider(t *testing.T) {
 			shouldError:  false,
 		},
 		{
-			name: "Anthropic provider", 
+			name: "Anthropic provider",
 			config: config.ModelConfig{
 				Provider: "anthropic",
 				Model:    "claude-3-sonnet",
@@ -47,7 +47,7 @@ func TestNewProvider(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider, err := NewProvider(tt.config)
-			
+
 			if tt.shouldError {
 				assertError(t, err)
 				assertNil(t, provider)
@@ -94,12 +94,12 @@ func TestChatRequest_Structure(t *testing.T) {
 	assertEqual(t, "You are helpful", req.Messages[0].Content)
 	assertEqual(t, "user", req.Messages[1].Role)
 	assertEqual(t, "Hello", req.Messages[1].Content)
-	
+
 	assertEqual(t, 1, len(req.Tools))
 	assertEqual(t, "function", req.Tools[0].Type)
 	assertEqual(t, "test_function", req.Tools[0].Function.Name)
 	assertEqual(t, "A test function", req.Tools[0].Function.Description)
-	
+
 	assertEqual(t, 0.7, req.Temperature)
 	assertEqual(t, 1000, req.MaxTokens)
 	assertEqual(t, 0.9, req.TopP)
@@ -200,7 +200,7 @@ func TestMessage_Variants(t *testing.T) {
 	assertEqual(t, "system", sysMsg.Role)
 	assertEqual(t, "You are a helpful assistant", sysMsg.Content)
 
-	// User message  
+	// User message
 	userMsg := Message{
 		Role:    "user",
 		Content: "What's the weather like?",
@@ -261,21 +261,21 @@ func TestFunction_Schema(t *testing.T) {
 
 	assertEqual(t, "get_weather", fn.Name)
 	assertEqual(t, "Get current weather for a location", fn.Description)
-	
+
 	assertNotNil(t, fn.Parameters)
 	assertEqual(t, "object", fn.Parameters["type"])
-	
+
 	properties := fn.Parameters["properties"].(map[string]any)
 	assertNotNil(t, properties)
-	
+
 	location := properties["location"].(map[string]any)
 	assertEqual(t, "string", location["type"])
 	assertEqual(t, "The city and state", location["description"])
-	
+
 	unit := properties["unit"].(map[string]any)
 	assertEqual(t, "string", unit["type"])
 	assertEqual(t, "Temperature unit", unit["description"])
-	
+
 	required := fn.Parameters["required"].([]string)
 	assertEqual(t, 1, len(required))
 	assertEqual(t, "location", required[0])

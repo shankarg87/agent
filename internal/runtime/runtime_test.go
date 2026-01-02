@@ -60,7 +60,7 @@ func (m *MockProvider) Model() string {
 func TestRunContext_Structure(t *testing.T) {
 	run := &store.Run{
 		ID:        "test-run",
-		SessionID: "test-session", 
+		SessionID: "test-session",
 		TenantID:  "tenant-1",
 		Mode:      "interactive",
 		Status:    store.RunStateRunning,
@@ -175,13 +175,13 @@ func TestRuntime_Components(t *testing.T) {
 
 	// Test basic store operations
 	ctx := context.Background()
-	
+
 	session := &store.Session{
 		ID:          "test-session",
 		TenantID:    "tenant-1",
 		ProfileName: "test-profile",
 	}
-	
+
 	err := st.CreateSession(ctx, session)
 	assertNoError(t, err)
 
@@ -195,10 +195,10 @@ func TestRuntime_Components(t *testing.T) {
 	assertNotNil(t, ch)
 
 	event := &store.Event{
-		ID:        "event-1",
-		RunID:     "run-1",
-		Type:      store.EventTypeRunStarted,
-		Data:      map[string]any{},
+		ID:    "event-1",
+		RunID: "run-1",
+		Type:  store.EventTypeRunStarted,
+		Data:  map[string]any{},
 	}
 
 	eventBus.Publish("run-1", event)

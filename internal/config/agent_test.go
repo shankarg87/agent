@@ -11,7 +11,7 @@ func TestLoadAgentConfig(t *testing.T) {
 	// Create a temporary test config file
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "test-agent.yaml")
-	
+
 	configContent := `profile_name: test-agent
 profile_version: 1.0.0
 description: Test agent
@@ -94,7 +94,7 @@ func TestLoadAgentConfig_WithDefaults(t *testing.T) {
 	// Create a minimal config file to test defaults
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "minimal-agent.yaml")
-	
+
 	configContent := `profile_name: minimal-agent
 profile_version: 1.0.0
 description: Minimal test agent
@@ -130,7 +130,7 @@ func TestLoadAgentConfig_InvalidFile(t *testing.T) {
 func TestLoadAgentConfig_InvalidYAML(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "invalid.yaml")
-	
+
 	// Write invalid YAML
 	invalidYAML := `profile_name: test
 invalid: [unclosed bracket
@@ -179,12 +179,12 @@ func TestModelConfig_Validation(t *testing.T) {
 
 func TestToolConfig_Structure(t *testing.T) {
 	cfg := testAgentConfig()
-	
+
 	// Add some test tool configs
 	cfg.Tools = []ToolConfig{
 		{
-			ServerName:       "test-server",
-			Allowlist:        []string{"tool1", "tool2"},
+			ServerName: "test-server",
+			Allowlist:  []string{"tool1", "tool2"},
 			RequiresApproval: ApprovalRequirement{
 				Always:      false,
 				Conditional: []string{"dangerous_.*"},

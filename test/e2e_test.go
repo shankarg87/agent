@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shankarg87/agent/api/handlers"
 	"github.com/shankarg87/agent/internal/config"
 	"github.com/shankarg87/agent/internal/events"
 	"github.com/shankarg87/agent/internal/mcp"
@@ -76,13 +77,16 @@ func setupTestServer(t *testing.T) *TestServer {
 		t.Fatalf("Failed to load MCP servers: %v", err)
 	}
 
+	// Create config manager for runtime (wraps the config)
+	configManager := config.NewConfigManagerForTest(cfg, mcpCfg)
+
 	// Create runtime
-	rt := runtime.NewRuntime(cfg, storage, eventBus, llmProvider, mcpRegistry)
+	rt := runtime.NewRuntime(configManager, storage, eventBus, llmProvider, mcpRegistry, nil)
 
 	// Setup HTTP routes
 	mux := http.NewServeMux()
-	runtime.RegisterRunsAPI(mux, rt)
-	runtime.RegisterV1API(mux, rt)
+	handlers.RegisterRunsAPI(mux, rt)
+	handlers.RegisterOpenAIChatAPI(mux, rt)
 
 	// Create test server
 	server := httptest.NewServer(mux)

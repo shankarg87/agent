@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shankarg87/agent/api/handlers"
 	"github.com/shankarg87/agent/internal/config"
 	"github.com/shankarg87/agent/internal/events"
 	"github.com/shankarg87/agent/internal/logging"
@@ -242,11 +243,16 @@ func main() {
 
 	// Native /runs API
 	logger.Verbose("Registering native runs API")
-	runtime.RegisterRunsAPI(mux, rt)
+	handlers.RegisterRunsAPI(mux, rt)
 
 	// OpenAI-compatible /v1 API
 	logger.Verbose("Registering OpenAI-compatible v1 API")
-	runtime.RegisterV1API(mux, rt)
+	handlers.RegisterOpenAIChatAPI(mux, rt)
+	handlers.RegisterOpenAIResponsesAPI(mux, rt)
+
+	// Anthropic-compatible /v1 API
+	logger.Verbose("Registering Anthropic-compatible v1 API")
+	handlers.RegisterAnthropicAPI(mux, rt)
 
 	// Metrics endpoint (if metrics are enabled)
 	if agentMetrics != nil {

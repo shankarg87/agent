@@ -222,3 +222,14 @@ func (cm *ConfigManager) Close() error {
 
 	return nil
 }
+
+// NewConfigManagerForTest creates a config manager from already-loaded configs (for testing)
+// This skips file watching and is suitable for test environments
+func NewConfigManagerForTest(agentConfig *AgentConfig, mcpConfig *MCPConfig) *ConfigManager {
+	return &ConfigManager{
+		agentConfig:  agentConfig,
+		mcpConfig:    mcpConfig,
+		lastReload:   time.Now(),
+		stopWatching: make(chan struct{}),
+	}
+}

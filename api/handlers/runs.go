@@ -1,4 +1,4 @@
-package runtime
+package handlers
 
 import (
 	"encoding/json"
@@ -7,11 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shankarg87/agent/api/streaming"
+	"github.com/shankarg87/agent/internal/runtime"
 	"github.com/shankarg87/agent/internal/store"
 )
 
 // RegisterRunsAPI registers the /runs API endpoints
-func RegisterRunsAPI(mux *http.ServeMux, rt *Runtime) {
+func RegisterRunsAPI(mux *http.ServeMux, rt *runtime.Runtime) {
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
@@ -76,8 +78,8 @@ func RegisterRunsAPI(mux *http.ServeMux, rt *Runtime) {
 	})
 }
 
-func handleCreateRun(w http.ResponseWriter, r *http.Request, rt *Runtime) {
-	var req CreateRunRequest
+func handleCreateRun(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime) {
+	var req runtime.CreateRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 		return
@@ -102,7 +104,7 @@ func handleCreateRun(w http.ResponseWriter, r *http.Request, rt *Runtime) {
 	json.NewEncoder(w).Encode(run)
 }
 
-func handleGetRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+func handleGetRun(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string) {
 	run, err := rt.GetRun(r.Context(), runID)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -117,7 +119,7 @@ func handleGetRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID str
 	json.NewEncoder(w).Encode(run)
 }
 
-func handleGetRunEvents(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+func handleGetRunEvents(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string) {
 	// Check if run exists
 	_, err := rt.GetRun(r.Context(), runID)
 	if err != nil {
@@ -130,19 +132,16 @@ func handleGetRunEvents(w http.ResponseWriter, r *http.Request, rt *Runtime, run
 	}
 
 	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	streaming.SetSSEHeaders(w)
 
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := streaming.GetFlusher(w)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	// Get historical events first
-	events, err := rt.store.GetEvents(r.Context(), runID)
+	events, err := rt.GetEvents(r.Context(), runID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get events: %v", err), http.StatusInternalServerError)
 		return
@@ -150,15 +149,15 @@ func handleGetRunEvents(w http.ResponseWriter, r *http.Request, rt *Runtime, run
 
 	// Send historical events
 	for _, event := range events {
-		if err := writeSSEEvent(w, event); err != nil {
+		if err := streaming.WriteSSEEvent(w, event); err != nil {
 			return
 		}
 		flusher.Flush()
 	}
 
 	// Subscribe to new events
-	eventChan := rt.eventBus.Subscribe(runID)
-	defer rt.eventBus.Unsubscribe(runID, eventChan)
+	eventChan := rt.SubscribeToEvents(runID)
+	defer rt.UnsubscribeFromEvents(runID, eventChan)
 
 	// Stream new events
 	for {
@@ -170,7 +169,7 @@ func handleGetRunEvents(w http.ResponseWriter, r *http.Request, rt *Runtime, run
 				// Channel closed, run is done
 				return
 			}
-			if err := writeSSEEvent(w, event); err != nil {
+			if err := streaming.WriteSSEEvent(w, event); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -178,7 +177,7 @@ func handleGetRunEvents(w http.ResponseWriter, r *http.Request, rt *Runtime, run
 	}
 }
 
-func handleCancelRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+func handleCancelRun(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string) {
 	if err := rt.CancelRun(r.Context(), runID); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to cancel run: %v", err), http.StatusInternalServerError)
 		return
@@ -191,7 +190,7 @@ func handleCancelRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID 
 	})
 }
 
-func handlePauseRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+func handlePauseRun(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string) {
 	if err := rt.PauseRun(r.Context(), runID); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to pause run: %v", err), http.StatusInternalServerError)
 		return
@@ -204,7 +203,7 @@ func handlePauseRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID s
 	})
 }
 
-func handleResumeRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID string) {
+func handleResumeRun(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string) {
 	if err := rt.ResumeRun(r.Context(), runID); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to resume run: %v", err), http.StatusInternalServerError)
 		return
@@ -215,19 +214,6 @@ func handleResumeRun(w http.ResponseWriter, r *http.Request, rt *Runtime, runID 
 		"status": "resumed",
 		"run_id": runID,
 	})
-}
-
-func writeSSEEvent(w http.ResponseWriter, event *store.Event) error {
-	data, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	// SSE format: event: <type>\ndata: <json>\n\n
-	fmt.Fprintf(w, "event: %s\n", event.Type)
-	fmt.Fprintf(w, "data: %s\n\n", string(data))
-
-	return nil
 }
 
 // RunResponse is the API response for a run

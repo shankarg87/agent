@@ -10,7 +10,7 @@ import (
 func TestLoadMCPConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "test-mcp.yaml")
-	
+
 	configContent := `servers:
   - name: echo
     transport: stdio
@@ -55,14 +55,14 @@ func TestLoadMCPConfig(t *testing.T) {
 	assertEqual(t, "http", http.Transport)
 	assertEqual(t, "http://localhost:8080/mcp", http.Endpoint)
 	assertEqual(t, 60*time.Second, http.Timeout)
-	assertEqual(t, 3, http.RetryMax) // default
+	assertEqual(t, 3, http.RetryMax)               // default
 	assertEqual(t, 1*time.Second, http.RetryDelay) // default
 }
 
 func TestLoadMCPConfig_WithDefaults(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "minimal-mcp.yaml")
-	
+
 	configContent := `servers:
   - name: simple
     transport: stdio
@@ -78,7 +78,7 @@ func TestLoadMCPConfig_WithDefaults(t *testing.T) {
 
 	assertEqual(t, 1, len(cfg.Servers))
 	server := cfg.Servers[0]
-	
+
 	// Verify defaults are applied
 	assertEqual(t, 30*time.Second, server.Timeout)
 	assertEqual(t, 3, server.RetryMax)
@@ -93,7 +93,7 @@ func TestLoadMCPConfig_InvalidFile(t *testing.T) {
 func TestLoadMCPConfig_InvalidYAML(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "invalid.yaml")
-	
+
 	invalidYAML := `servers:
   - name: test
     invalid: [unclosed
@@ -135,7 +135,7 @@ func TestMCPServerConfig_Structure(t *testing.T) {
 func TestMCPConfig_EmptyServers(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "empty-mcp.yaml")
-	
+
 	configContent := `servers: []`
 
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
