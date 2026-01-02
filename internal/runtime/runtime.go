@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shankgan/agent/internal/config"
 	"github.com/shankgan/agent/internal/events"
+	"github.com/shankgan/agent/internal/logging"
 	"github.com/shankgan/agent/internal/mcp"
 	"github.com/shankgan/agent/internal/metrics"
 	"github.com/shankgan/agent/internal/provider"
@@ -18,12 +19,13 @@ import (
 
 // Runtime manages the agent execution environment
 type Runtime struct {
-	config      *config.AgentConfig
-	store       store.Store
-	eventBus    *events.EventBus
-	provider    provider.Provider
-	mcpRegistry *mcp.Registry
-	metrics     *metrics.AgentMetrics
+	configManager *config.ConfigManager
+	store         store.Store
+	eventBus      *events.EventBus
+	provider      provider.Provider
+	mcpRegistry   *mcp.Registry
+	metrics       *metrics.AgentMetrics
+	logger        *logging.SimpleLogger
 
 	mu            sync.RWMutex
 	activeRuns    map[string]*RunContext
@@ -35,6 +37,7 @@ type RunContext struct {
 	Run           *store.Run
 	Session       *store.Session
 	Messages      []*store.Message
+	Config        *config.AgentConfig // Snapshot of config at run creation time
 	Cancel        context.CancelFunc
 	ToolCallCount int
 	FailureCount  int
@@ -48,20 +51,24 @@ type RunContext struct {
 
 // NewRuntime creates a new runtime instance
 func NewRuntime(
-	cfg *config.AgentConfig,
+	configManager *config.ConfigManager,
 	st store.Store,
 	eb *events.EventBus,
 	prov provider.Provider,
 	mcpReg *mcp.Registry,
 	met *metrics.AgentMetrics,
 ) *Runtime {
+	logger := logging.VerboseLogger("runtime")
+	logger.Verbose("Creating new runtime instance")
+
 	return &Runtime{
-		config:        cfg,
+		configManager: configManager,
 		store:         st,
 		eventBus:      eb,
 		provider:      prov,
 		mcpRegistry:   mcpReg,
 		metrics:       met,
+		logger:        logger,
 		activeRuns:    make(map[string]*RunContext),
 		cancellations: make(map[string]context.CancelFunc),
 	}
@@ -69,6 +76,9 @@ func NewRuntime(
 
 // CreateRun creates a new run
 func (r *Runtime) CreateRun(ctx context.Context, req *CreateRunRequest) (*store.Run, error) {
+	r.logger.LogRunStart("", "", req)
+	start := time.Now()
+
 	// Record run creation metrics
 	if r.metrics != nil {
 		r.metrics.RunCreated(ctx, req.TenantID, req.Mode)
@@ -77,27 +87,46 @@ func (r *Runtime) CreateRun(ctx context.Context, req *CreateRunRequest) (*store.
 		}()
 	}
 
+	// Get current configuration snapshot for this run
+	r.logger.Verbose("Getting current configuration snapshot")
+	currentConfig := r.configManager.GetAgentConfig()
+	r.logger.Verbose("Configuration snapshot obtained",
+		"profile_name", currentConfig.ProfileName,
+		"profile_version", currentConfig.ProfileVersion,
+		"max_tool_calls", currentConfig.MaxToolCalls,
+	)
+
 	// Get or create session
 	var session *store.Session
 	if req.SessionID != "" {
+		r.logger.Verbose("Getting existing session", "session_id", req.SessionID)
 		s, err := r.store.GetSession(ctx, req.SessionID)
 		if err != nil {
+			r.logger.Error("Failed to get session",
+				"session_id", req.SessionID,
+				"error", err,
+			)
 			return nil, fmt.Errorf("failed to get session: %w", err)
 		}
 		session = s
+		r.logger.Verbose("Existing session retrieved", "session_id", session.ID)
 	} else {
+		r.logger.Verbose("Creating new session")
 		session = &store.Session{
 			ID:          uuid.New().String(),
 			TenantID:    req.TenantID,
-			ProfileName: r.config.ProfileName,
+			ProfileName: currentConfig.ProfileName,
 			Metadata:    req.Metadata,
 		}
 		if err := r.store.CreateSession(ctx, session); err != nil {
+			r.logger.Error("Failed to create session", "error", err)
 			return nil, fmt.Errorf("failed to create session: %w", err)
 		}
+		r.logger.Verbose("New session created", "session_id", session.ID)
 	}
 
 	// Create run
+	r.logger.Verbose("Creating new run")
 	run := &store.Run{
 		ID:        uuid.New().String(),
 		SessionID: session.ID,
@@ -109,64 +138,110 @@ func (r *Runtime) CreateRun(ctx context.Context, req *CreateRunRequest) (*store.
 	}
 
 	if err := r.store.CreateRun(ctx, run); err != nil {
+		r.logger.Error("Failed to create run", "run_id", run.ID, "error", err)
 		return nil, fmt.Errorf("failed to create run: %w", err)
 	}
 
+	r.logger.Info("Run created",
+		"run_id", run.ID,
+		"session_id", session.ID,
+		"tenant_id", req.TenantID,
+		"mode", req.Mode,
+	)
+
 	// Add user message if input provided
 	if req.Input != "" {
+		r.logger.Verbose("Adding user message", "run_id", run.ID, "input_length", len(req.Input))
 		msg := &store.Message{
 			Role:      "user",
 			Content:   req.Input,
 			SessionID: session.ID,
 		}
 		if err := r.store.AddMessage(ctx, session.ID, msg); err != nil {
+			r.logger.Error("Failed to add message", "run_id", run.ID, "error", err)
 			return nil, fmt.Errorf("failed to add message: %w", err)
 		}
+		r.logger.Verbose("User message added", "run_id", run.ID)
 	}
 
 	// Start execution
+	r.logger.Verbose("Starting run execution", "run_id", run.ID)
 	go r.executeRun(context.Background(), run.ID)
+
+	r.logger.LogPerformance("create_run", time.Since(start), map[string]interface{}{
+		"run_id": run.ID,
+		"mode":   req.Mode,
+	})
 
 	return run, nil
 }
 
 // GetRun retrieves a run by ID
 func (r *Runtime) GetRun(ctx context.Context, runID string) (*store.Run, error) {
-	return r.store.GetRun(ctx, runID)
+	r.logger.Verbose("Getting run", "run_id", runID)
+	start := time.Now()
+
+	run, err := r.store.GetRun(ctx, runID)
+	if err != nil {
+		r.logger.Error("Failed to get run", "run_id", runID, "error", err)
+		return nil, err
+	}
+
+	r.logger.LogPerformance("get_run", time.Since(start), map[string]interface{}{
+		"run_id": runID,
+		"status": run.Status,
+	})
+
+	return run, nil
 }
 
 // CancelRun cancels a running run
 func (r *Runtime) CancelRun(ctx context.Context, runID string) error {
+	r.logger.Info("Canceling run", "run_id", runID)
+
 	r.mu.Lock()
 	cancel, ok := r.cancellations[runID]
 	r.mu.Unlock()
 
 	if !ok {
+		r.logger.Warn("Run not found or not running for cancellation", "run_id", runID)
 		return fmt.Errorf("run not found or not running")
 	}
 
+	r.logger.Verbose("Triggering cancellation", "run_id", runID)
 	cancel()
 
 	// Update run status
 	run, err := r.store.GetRun(ctx, runID)
 	if err != nil {
+		r.logger.Error("Failed to get run for cancellation", "run_id", runID, "error", err)
 		return err
 	}
 
+	r.logger.LogStateTransition(runID, string(run.Status), string(store.RunStateCancelled), "user_cancellation")
 	run.Status = store.RunStateCancelled
 	now := time.Now()
 	run.EndedAt = &now
 
-	return r.store.UpdateRun(ctx, run)
+	if err := r.store.UpdateRun(ctx, run); err != nil {
+		r.logger.Error("Failed to update run status after cancellation", "run_id", runID, "error", err)
+		return err
+	}
+
+	r.logger.Info("Run cancelled successfully", "run_id", runID)
+	return nil
 }
 
 // PauseRun pauses a running run
 func (r *Runtime) PauseRun(ctx context.Context, runID string) error {
+	r.logger.Info("Pausing run", "run_id", runID)
+
 	r.mu.Lock()
 	runCtx, ok := r.activeRuns[runID]
 	r.mu.Unlock()
 
 	if !ok {
+		r.logger.Warn("Run not found or not active for pausing", "run_id", runID)
 		return fmt.Errorf("run not found or not active")
 	}
 
@@ -174,6 +249,7 @@ func (r *Runtime) PauseRun(ctx context.Context, runID string) error {
 	defer runCtx.mu.Unlock()
 
 	if runCtx.isPaused {
+		r.logger.Warn("Run is already paused", "run_id", runID)
 		return fmt.Errorf("run is already paused")
 	}
 
@@ -280,10 +356,11 @@ func (r *Runtime) executeRun(parentCtx context.Context, runID string) {
 		r.eventBus.CloseAll(runID)
 	}()
 
-	// Apply timeout if configured
-	if r.config.MaxRunTimeSeconds > 0 {
+	// Apply timeout if configured (get current config)
+	timeoutConfig := r.configManager.GetAgentConfig()
+	if timeoutConfig.MaxRunTimeSeconds > 0 {
 		var timeoutCancel context.CancelFunc
-		ctx, timeoutCancel = context.WithTimeout(ctx, time.Duration(r.config.MaxRunTimeSeconds)*time.Second)
+		ctx, timeoutCancel = context.WithTimeout(ctx, time.Duration(timeoutConfig.MaxRunTimeSeconds)*time.Second)
 		defer timeoutCancel()
 	}
 
@@ -306,10 +383,14 @@ func (r *Runtime) executeRun(parentCtx context.Context, runID string) {
 		return
 	}
 
+	// Get current configuration snapshot for this execution
+	currentConfig := r.configManager.GetAgentConfig()
+
 	runCtx := &RunContext{
 		Run:          run,
 		Session:      session,
 		Messages:     messages,
+		Config:       currentConfig, // Snapshot config at run start
 		Cancel:       cancel,
 		pauseSignal:  make(chan struct{}, 1),
 		resumeSignal: make(chan struct{}, 1),
@@ -353,7 +434,7 @@ func (r *Runtime) executeRun(parentCtx context.Context, runID string) {
 
 // runAgentLoop executes the main agent reasoning loop
 func (r *Runtime) runAgentLoop(ctx context.Context, runCtx *RunContext) error {
-	maxIterations := r.config.MaxToolCalls
+	maxIterations := runCtx.Config.MaxToolCalls
 	iteration := 0
 
 	for iteration < maxIterations {
@@ -390,15 +471,15 @@ func (r *Runtime) runAgentLoop(ctx context.Context, runCtx *RunContext) error {
 		req := &provider.ChatRequest{
 			Messages:    providerMessages,
 			Tools:       tools,
-			Temperature: r.config.Temperature,
-			MaxTokens:   r.config.MaxOutputTokens,
-			TopP:        r.config.TopP,
+			Temperature: runCtx.Config.Temperature,
+			MaxTokens:   runCtx.Config.MaxOutputTokens,
+			TopP:        runCtx.Config.TopP,
 		}
 
 		resp, err := r.provider.Chat(ctx, req)
 		if err != nil {
 			runCtx.FailureCount++
-			if runCtx.FailureCount >= r.config.MaxFailuresPerRun {
+			if runCtx.FailureCount >= runCtx.Config.MaxFailuresPerRun {
 				return fmt.Errorf("max failures exceeded: %w", err)
 			}
 			continue
@@ -489,7 +570,7 @@ func (r *Runtime) handleToolCalls(ctx context.Context, runCtx *RunContext, toolC
 			runCtx.Messages = append(runCtx.Messages, errorMsg)
 
 			runCtx.FailureCount++
-			if runCtx.FailureCount >= r.config.MaxFailuresPerRun {
+			if runCtx.FailureCount >= runCtx.Config.MaxFailuresPerRun {
 				return fmt.Errorf("max failures exceeded")
 			}
 		}
@@ -554,10 +635,10 @@ func (r *Runtime) buildProviderMessages(runCtx *RunContext) []provider.Message {
 	messages := []provider.Message{}
 
 	// Add system message
-	if r.config.SystemPrompt != "" {
+	if runCtx.Config.SystemPrompt != "" {
 		messages = append(messages, provider.Message{
 			Role:    "system",
-			Content: r.config.SystemPrompt,
+			Content: runCtx.Config.SystemPrompt,
 		})
 	}
 

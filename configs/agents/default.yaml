@@ -68,7 +68,10 @@ write_policy: "explicit"
 read_policy: "on_demand"
 
 # Logging & Observability
-log_level: "info"
+log_level: "info"  # debug, info, warn, error
+verbose_logging: false  # Enable detailed verbose logging for troubleshooting
+log_format: "json"  # json or text
+log_source: true  # Include source file/line information
 trace_enabled: true
 metrics_enabled: true
 metrics_config:
@@ -88,7 +91,7 @@ metrics_config:
   #   resources:
   #     service.name: "agent-runtime"
   #     service.version: "1.0.0"
-log_payload_policy: "redacted"
+log_payload_policy: "redacted"  # full, redacted, hashes_only
 
 # Reliability
 idempotency_keys: true

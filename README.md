@@ -54,9 +54,32 @@ export OPENAI_API_KEY=your_api_key_here
 # Start the agent server (default port 8080)
 ./bin/agentd
 
-# With custom config
-./bin/agentd --config configs/agents/default.yaml --addr :8080
+# With custom configuration files and port
+./bin/agentd --config configs/agents/default.yaml --mcp-config configs/mcp/servers.yaml --addr :8080
+
+# With environment variables
+export AGENT_CONFIG=configs/agents/custom.yaml
+export AGENT_ADDR=:9000
+./bin/agentd
+
+# Disable configuration file watching (useful for production)
+./bin/agentd --watch-config=false
 ```
+
+#### Dynamic Configuration
+The agent now supports dynamic configuration reloading:
+- Configuration files are automatically watched for changes
+- New runs use updated configuration immediately  
+- Existing runs continue with their original configuration
+- See [docs/DYNAMIC_CONFIG.md](docs/DYNAMIC_CONFIG.md) for details
+
+#### CLI Flags
+- `--config`: Path to agent configuration file (default: `configs/agents/default.yaml`)
+- `--mcp-config`: Path to MCP servers configuration file (default: `configs/mcp/servers.yaml`) 
+- `--addr`: HTTP server address (default: `:8080`)
+- `--watch-config`: Enable configuration file watching (default: `true`)
+
+All flags can be set via environment variables with `AGENT_` prefix (e.g., `AGENT_CONFIG`, `AGENT_ADDR`)
 
 ## API Usage
 

@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/shankgan/agent/internal/config"
+	"github.com/shankgan/agent/internal/logging"
 )
 
 // Registry manages MCP server connections and tool invocations
 type Registry struct {
 	mu      sync.RWMutex
 	servers map[string]*MCPServer
+	logger  *logging.SimpleLogger
 }
 
 // MCPServer wraps an MCP client with metadata
@@ -48,27 +51,59 @@ type ContentBlock struct {
 
 // NewRegistry creates a new MCP server registry
 func NewRegistry() *Registry {
+	logger := logging.VerboseLogger("mcp")
+	logger.Verbose("Creating new MCP registry")
+
 	return &Registry{
 		servers: make(map[string]*MCPServer),
+		logger:  logger,
 	}
 }
 
 // LoadServers loads and connects to all configured MCP servers
 func (r *Registry) LoadServers(ctx context.Context, cfg *config.MCPConfig) error {
+	r.logger.Info("Loading MCP servers", "server_count", len(cfg.Servers))
+
 	for _, serverCfg := range cfg.Servers {
+		r.logger.Verbose("Loading MCP server",
+			"name", serverCfg.Name,
+			"transport", serverCfg.Transport,
+			"endpoint", serverCfg.Endpoint,
+		)
+
 		if err := r.LoadServer(ctx, serverCfg); err != nil {
+			r.logger.Error("Failed to load MCP server",
+				"name", serverCfg.Name,
+				"error", err,
+			)
 			return fmt.Errorf("failed to load server %s: %w", serverCfg.Name, err)
 		}
+
+		r.logger.Info("MCP server loaded successfully", "name", serverCfg.Name)
 	}
+
+	r.logger.Info("All MCP servers loaded successfully", "total_servers", len(cfg.Servers))
 	return nil
 }
 
 // LoadServer loads a single MCP server
 func (r *Registry) LoadServer(ctx context.Context, cfg config.MCPServerConfig) error {
+	start := time.Now()
+	r.logger.Verbose("Starting MCP server initialization",
+		"name", cfg.Name,
+		"transport", cfg.Transport,
+		"endpoint", cfg.Endpoint,
+		"args", cfg.Args,
+	)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if cfg.Transport != "stdio" {
+		r.logger.Error("Unsupported transport type",
+			"name", cfg.Name,
+			"transport", cfg.Transport,
+		)
 		return fmt.Errorf("only stdio transport is currently supported")
 	}
 
@@ -78,13 +113,24 @@ func (r *Registry) LoadServer(ctx context.Context, cfg config.MCPServerConfig) e
 		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	r.logger.Verbose("Environment variables prepared",
+		"name", cfg.Name,
+		"env_count", len(envSlice),
+	)
+
 	// Create stdio client (automatically starts)
+	r.logger.Verbose("Creating MCP client", "name", cfg.Name)
 	mcpClient, err := client.NewStdioMCPClient(cfg.Endpoint, envSlice, cfg.Args...)
 	if err != nil {
+		r.logger.Error("Failed to create MCP client",
+			"name", cfg.Name,
+			"error", err,
+		)
 		return fmt.Errorf("failed to create MCP client: %w", err)
 	}
 
 	// Initialize the client
+	r.logger.Verbose("Initializing MCP client", "name", cfg.Name)
 	initReq := mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
 			ProtocolVersion: "2024-11-05",
@@ -98,16 +144,32 @@ func (r *Registry) LoadServer(ctx context.Context, cfg config.MCPServerConfig) e
 
 	_, err = mcpClient.Initialize(ctx, initReq)
 	if err != nil {
+		r.logger.Error("Failed to initialize MCP client",
+			"name", cfg.Name,
+			"error", err,
+		)
 		mcpClient.Close()
 		return fmt.Errorf("failed to initialize MCP client: %w", err)
 	}
 
+	r.logger.Verbose("MCP client initialized successfully", "name", cfg.Name)
+
 	// List available tools
+	r.logger.Verbose("Listing available tools", "name", cfg.Name)
 	toolsResp, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
+		r.logger.Error("Failed to list tools",
+			"name", cfg.Name,
+			"error", err,
+		)
 		mcpClient.Close()
 		return fmt.Errorf("failed to list tools: %w", err)
 	}
+
+	r.logger.Verbose("Tools listed successfully",
+		"name", cfg.Name,
+		"tool_count", len(toolsResp.Tools),
+	)
 
 	// Build tool map
 	tools := make(map[string]*Tool)
@@ -123,6 +185,12 @@ func (r *Registry) LoadServer(ctx context.Context, cfg config.MCPServerConfig) e
 			InputSchema: schemaMap,
 			ServerName:  cfg.Name,
 		}
+
+		r.logger.Verbose("Tool registered",
+			"server_name", cfg.Name,
+			"tool_name", t.Name,
+			"description", t.Description,
+		)
 	}
 
 	r.servers[cfg.Name] = &MCPServer{
@@ -131,6 +199,12 @@ func (r *Registry) LoadServer(ctx context.Context, cfg config.MCPServerConfig) e
 		Client: mcpClient,
 		Tools:  tools,
 	}
+
+	r.logger.LogMCPConnection(cfg.Name, cfg.Transport, cfg.Endpoint, true)
+	r.logger.LogPerformance("load_mcp_server", time.Since(start), map[string]interface{}{
+		"server_name": cfg.Name,
+		"tool_count":  len(tools),
+	})
 
 	return nil
 }

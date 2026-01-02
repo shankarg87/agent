@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/shankgan/agent/internal/config"
+	"github.com/shankgan/agent/internal/logging"
 )
 
 const anthropicAPIURL = "https://api.anthropic.com/v1/messages"
@@ -22,15 +24,20 @@ type AnthropicProvider struct {
 	model    string
 	endpoint string
 	client   *http.Client
+	logger   *logging.SimpleLogger
 }
 
 // NewAnthropicProvider creates a new Anthropic provider
 func NewAnthropicProvider(cfg config.ModelConfig) (*AnthropicProvider, error) {
+	logger := logging.VerboseLogger("anthropic")
+	logger.Verbose("Initializing Anthropic provider", "model", cfg.Model)
+
 	apiKey := cfg.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
 	if apiKey == "" {
+		logger.Error("Anthropic API key not configured")
 		return nil, fmt.Errorf("anthropic API key not configured")
 	}
 
@@ -39,11 +46,18 @@ func NewAnthropicProvider(cfg config.ModelConfig) (*AnthropicProvider, error) {
 		endpoint = anthropicAPIURL
 	}
 
+	logger.Info("Anthropic provider initialized",
+		"model", cfg.Model,
+		"endpoint", endpoint,
+		"api_key_set", apiKey != "",
+	)
+
 	return &AnthropicProvider{
 		apiKey:   apiKey,
 		model:    cfg.Model,
 		endpoint: endpoint,
 		client:   &http.Client{},
+		logger:   logger,
 	}, nil
 }
 
@@ -56,16 +70,31 @@ func (p *AnthropicProvider) Model() string {
 }
 
 func (p *AnthropicProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
+	start := time.Now()
+	p.logger.Verbose("Starting Anthropic chat request",
+		"model", p.model,
+		"messages_count", len(req.Messages),
+		"tools_count", len(req.Tools),
+		"temperature", req.Temperature,
+	)
+
 	anthropicReq := p.convertRequest(req)
 	anthropicReq.Stream = false
 
 	body, err := json.Marshal(anthropicReq)
 	if err != nil {
+		p.logger.Error("Failed to marshal request", "error", err)
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	p.logger.Verbose("Sending request to Anthropic API",
+		"endpoint", p.endpoint,
+		"request_size", len(body),
+	)
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.endpoint, bytes.NewReader(body))
 	if err != nil {
+		p.logger.Error("Failed to create HTTP request", "error", err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -75,21 +104,49 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatRe
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		p.logger.Error("HTTP request failed",
+			"error", err,
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	p.logger.Verbose("Received response from Anthropic API",
+		"status_code", resp.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
+
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		p.logger.Error("API error",
+			"status_code", resp.StatusCode,
+			"response_body", string(bodyBytes),
+		)
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var anthropicResp anthropicResponse
 	if err := json.NewDecoder(resp.Body).Decode(&anthropicResp); err != nil {
+		p.logger.Error("Failed to decode response", "error", err)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return p.convertResponse(&anthropicResp), nil
+	response := p.convertResponse(&anthropicResp)
+
+	p.logger.LogProviderCall("anthropic", p.model,
+		int(anthropicResp.Usage.InputTokens+anthropicResp.Usage.OutputTokens),
+		0, // Cost calculation would go here
+	)
+
+	p.logger.Verbose("Chat request completed",
+		"finish_reason", response.FinishReason,
+		"input_tokens", anthropicResp.Usage.InputTokens,
+		"output_tokens", anthropicResp.Usage.OutputTokens,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
+
+	return response, nil
 }
 
 func (p *AnthropicProvider) Stream(ctx context.Context, req *ChatRequest) (<-chan StreamEvent, error) {
@@ -282,12 +339,12 @@ type anthropicTool struct {
 }
 
 type anthropicResponse struct {
-	ID         string                  `json:"id"`
-	Type       string                  `json:"type"`
-	Role       string                  `json:"role"`
-	Content    []anthropicContent      `json:"content"`
-	StopReason string                  `json:"stop_reason"`
-	Usage      anthropicUsage          `json:"usage"`
+	ID         string             `json:"id"`
+	Type       string             `json:"type"`
+	Role       string             `json:"role"`
+	Content    []anthropicContent `json:"content"`
+	StopReason string             `json:"stop_reason"`
+	Usage      anthropicUsage     `json:"usage"`
 }
 
 type anthropicContent struct {

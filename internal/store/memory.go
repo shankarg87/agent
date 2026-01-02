@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shankgan/agent/internal/logging"
 )
 
 var (
@@ -26,10 +27,15 @@ type InMemoryStore struct {
 	// Indexes
 	sessionsByTenant map[string][]string // tenantID -> sessionIDs
 	runsBySession    map[string][]string // sessionID -> runIDs
+
+	logger *logging.SimpleLogger
 }
 
 // NewInMemoryStore creates a new in-memory store
 func NewInMemoryStore() *InMemoryStore {
+	logger := logging.VerboseLogger("store")
+	logger.Verbose("Creating new in-memory store")
+
 	return &InMemoryStore{
 		sessions:         make(map[string]*Session),
 		runs:             make(map[string]*Run),
@@ -38,17 +44,22 @@ func NewInMemoryStore() *InMemoryStore {
 		toolCalls:        make(map[string][]*ToolCall),
 		sessionsByTenant: make(map[string][]string),
 		runsBySession:    make(map[string][]string),
+		logger:           logger,
 	}
 }
 
 // Sessions
 
 func (s *InMemoryStore) CreateSession(ctx context.Context, session *Session) error {
+	start := time.Now()
+	s.logger.Verbose("Creating session", "session_id", session.ID, "tenant_id", session.TenantID)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if session.ID == "" {
 		session.ID = uuid.New().String()
+		s.logger.Verbose("Generated new session ID", "session_id", session.ID)
 	}
 	session.CreatedAt = time.Now()
 	session.UpdatedAt = session.CreatedAt
@@ -56,17 +67,24 @@ func (s *InMemoryStore) CreateSession(ctx context.Context, session *Session) err
 	s.sessions[session.ID] = session
 	s.sessionsByTenant[session.TenantID] = append(s.sessionsByTenant[session.TenantID], session.ID)
 
+	s.logger.LogMemoryOperation("create_session", session.ID, true, time.Since(start))
 	return nil
 }
 
 func (s *InMemoryStore) GetSession(ctx context.Context, sessionID string) (*Session, error) {
+	start := time.Now()
+	s.logger.Verbose("Getting session", "session_id", sessionID)
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
+		s.logger.LogMemoryOperation("get_session", sessionID, false, time.Since(start))
 		return nil, ErrNotFound
 	}
+
+	s.logger.LogMemoryOperation("get_session", sessionID, true, time.Since(start))
 	return session, nil
 }
 
