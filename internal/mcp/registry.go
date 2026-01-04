@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -251,8 +253,89 @@ func (r *Registry) ListTools() []*Tool {
 	return tools
 }
 
-// CallTool executes a tool by name
-func (r *Registry) CallTool(ctx context.Context, toolName string, arguments map[string]any) (*ToolResult, error) {
+// ListToolsFiltered returns tools filtered by agent configuration (allowlist/denylist)
+func (r *Registry) ListToolsFiltered(toolConfigs []config.ToolConfig) []*Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var filteredTools []*Tool
+
+	for _, server := range r.servers {
+		// Find the tool config for this server
+		var toolConfig *config.ToolConfig
+		for i := range toolConfigs {
+			if toolConfigs[i].ServerName == server.Name {
+				toolConfig = &toolConfigs[i]
+				break
+			}
+		}
+
+		// If no config found, include all tools from this server
+		if toolConfig == nil {
+			for _, tool := range server.Tools {
+				filteredTools = append(filteredTools, tool)
+			}
+			continue
+		}
+
+		// Filter tools based on allowlist/denylist
+		for _, tool := range server.Tools {
+			if r.isToolAllowed(tool.Name, toolConfig) {
+				filteredTools = append(filteredTools, tool)
+				r.logger.Verbose("Tool included in filtered list",
+					"tool", tool.Name,
+					"server", server.Name,
+				)
+			} else {
+				r.logger.Info("Tool filtered out from LLM schema",
+					"tool", tool.Name,
+					"server", server.Name,
+					"reason", "denied by allowlist/denylist",
+				)
+			}
+		}
+	}
+
+	return filteredTools
+}
+
+// isToolAllowed checks if a tool is allowed based on allowlist/denylist configuration
+func (r *Registry) isToolAllowed(toolName string, toolConfig *config.ToolConfig) bool {
+	// Check denylist first (takes precedence)
+	for _, denied := range toolConfig.Denylist {
+		if matched, _ := regexp.MatchString(denied, toolName); matched {
+			r.logger.Verbose("Tool denied by denylist pattern",
+				"tool", toolName,
+				"pattern", denied,
+			)
+			return false
+		}
+	}
+
+	// If allowlist is specified, tool must match at least one pattern
+	if len(toolConfig.Allowlist) > 0 {
+		for _, pattern := range toolConfig.Allowlist {
+			if matched, _ := regexp.MatchString(pattern, toolName); matched {
+				r.logger.Verbose("Tool allowed by allowlist pattern",
+					"tool", toolName,
+					"pattern", pattern,
+				)
+				return true
+			}
+		}
+		// Tool doesn't match any allowlist pattern
+		r.logger.Verbose("Tool not in allowlist",
+			"tool", toolName,
+		)
+		return false
+	}
+
+	// No allowlist specified and not in denylist - allow by default
+	return true
+}
+
+// CallTool executes a tool by name with safety checks
+func (r *Registry) CallTool(ctx context.Context, toolName string, arguments map[string]any, toolConfig *config.ToolConfig) (*ToolResult, error) {
 	tool, err := r.GetTool(toolName)
 	if err != nil {
 		return nil, err
@@ -263,6 +346,23 @@ func (r *Registry) CallTool(ctx context.Context, toolName string, arguments map[
 		return nil, err
 	}
 
+	// Apply tool authorization and safety checks
+	if toolConfig != nil {
+		if err := r.validateToolAuthorization(toolName, arguments, toolConfig); err != nil {
+			r.logger.Warn("Tool authorization failed",
+				"tool", toolName,
+				"error", err,
+			)
+			return nil, fmt.Errorf("tool authorization failed: %w", err)
+		}
+	}
+
+	r.logger.Verbose("Executing tool",
+		"tool", toolName,
+		"server", tool.ServerName,
+		"args_count", len(arguments),
+	)
+
 	// Execute the tool
 	result, err := server.Client.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
@@ -271,6 +371,10 @@ func (r *Registry) CallTool(ctx context.Context, toolName string, arguments map[
 		},
 	})
 	if err != nil {
+		r.logger.Error("Tool execution failed",
+			"tool", toolName,
+			"error", err,
+		)
 		return nil, fmt.Errorf("tool execution failed: %w", err)
 	}
 
@@ -289,6 +393,12 @@ func (r *Registry) CallTool(ctx context.Context, toolName string, arguments map[
 			Text: text,
 		}
 	}
+
+	r.logger.Verbose("Tool executed successfully",
+		"tool", toolName,
+		"is_error", toolResult.IsError,
+		"content_blocks", len(toolResult.Content),
+	)
 
 	return toolResult, nil
 }
@@ -310,4 +420,156 @@ func (r *Registry) Close() error {
 	}
 
 	return nil
+}
+
+// SetServer sets or replaces an MCP server in the registry. This is a small
+// helper used by tests to inject mock servers without going through the full
+// LoadServer flow.
+func (r *Registry) SetServer(name string, server *MCPServer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.servers == nil {
+		r.servers = make(map[string]*MCPServer)
+	}
+	r.servers[name] = server
+}
+
+// validateToolAuthorization checks if a tool call is authorized based on configuration
+func (r *Registry) validateToolAuthorization(toolName string, arguments map[string]any, toolConfig *config.ToolConfig) error {
+	// Check if tool is in denylist
+	for _, denied := range toolConfig.Denylist {
+		if matched, _ := regexp.MatchString(denied, toolName); matched {
+			return fmt.Errorf("tool %s is denied by pattern %s", toolName, denied)
+		}
+	}
+
+	// Check if tool is in allowlist (if allowlist is specified, tool must match)
+	if len(toolConfig.Allowlist) > 0 {
+		allowed := false
+		for _, pattern := range toolConfig.Allowlist {
+			if matched, _ := regexp.MatchString(pattern, toolName); matched {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("tool %s is not in allowlist", toolName)
+		}
+	}
+
+	// Check if tool requires approval
+	if toolConfig.RequiresApproval.Always {
+		return fmt.Errorf("tool %s requires explicit approval", toolName)
+	}
+
+	// Check conditional approval patterns
+	for _, pattern := range toolConfig.RequiresApproval.Conditional {
+		if matched, _ := regexp.MatchString(pattern, toolName); matched {
+			return fmt.Errorf("tool %s requires approval due to pattern %s", toolName, pattern)
+		}
+	}
+
+	// Check for dangerous operations in arguments
+	if r.containsDangerousOperations(toolName, arguments) {
+		return fmt.Errorf("tool %s contains potentially dangerous operations", toolName)
+	}
+
+	return nil
+}
+
+// containsDangerousOperations checks for patterns that might indicate dangerous operations
+func (r *Registry) containsDangerousOperations(toolName string, arguments map[string]any) bool {
+	// Common dangerous patterns
+	dangerousPatterns := []string{
+		`rm\s+-rf`,
+		`sudo\s+`,
+		`chmod\s+777`,
+		`delete`,
+		`drop\s+table`,
+		`truncate`,
+		`format`,
+		`mkfs`,
+		`dd\s+if=`,
+		`>/dev/`,
+		`curl.*\|.*sh`,
+		`wget.*\|.*sh`,
+	}
+
+	// Check tool name for dangerous patterns
+	toolLower := strings.ToLower(toolName)
+	for _, pattern := range dangerousPatterns {
+		if matched, _ := regexp.MatchString(pattern, toolLower); matched {
+			r.logger.Warn("Dangerous pattern detected in tool name",
+				"tool", toolName,
+				"pattern", pattern,
+			)
+			return true
+		}
+	}
+
+	// Check arguments for dangerous patterns
+	for key, value := range arguments {
+		if str, ok := value.(string); ok {
+			strLower := strings.ToLower(str)
+			for _, pattern := range dangerousPatterns {
+				if matched, _ := regexp.MatchString(pattern, strLower); matched {
+					r.logger.Warn("Dangerous pattern detected in argument",
+						"tool", toolName,
+						"arg", key,
+						"pattern", pattern,
+					)
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// RequiresUserConsent checks if a tool requires explicit user consent before execution
+func (r *Registry) RequiresUserConsent(toolName string, arguments map[string]any, toolConfig *config.ToolConfig) (bool, string) {
+	if toolConfig == nil {
+		return false, ""
+	}
+
+	// Always requires consent
+	if toolConfig.RequiresApproval.Always {
+		return true, fmt.Sprintf("Tool '%s' always requires user consent", toolName)
+	}
+
+	// Check conditional patterns
+	for _, pattern := range toolConfig.RequiresApproval.Conditional {
+		if matched, _ := regexp.MatchString(pattern, toolName); matched {
+			return true, fmt.Sprintf("Tool '%s' requires consent due to pattern '%s'", toolName, pattern)
+		}
+	}
+
+	// Check for dangerous operations
+	if r.containsDangerousOperations(toolName, arguments) {
+		return true, fmt.Sprintf("Tool '%s' contains potentially dangerous operations", toolName)
+	}
+
+	// Check for write operations patterns
+	writePatterns := []string{
+		`.*write.*`,
+		`.*create.*`,
+		`.*delete.*`,
+		`.*update.*`,
+		`.*modify.*`,
+		`.*save.*`,
+		`.*file.*`,
+		`.*exec.*`,
+		`.*run.*`,
+		`.*shell.*`,
+		`.*command.*`,
+	}
+
+	for _, pattern := range writePatterns {
+		if matched, _ := regexp.MatchString(pattern, strings.ToLower(toolName)); matched {
+			return true, fmt.Sprintf("Tool '%s' appears to perform write operations", toolName)
+		}
+	}
+
+	return false, ""
 }

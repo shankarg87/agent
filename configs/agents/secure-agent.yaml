@@ -1,0 +1,90 @@
+# Security-Focused Agent Profile for Testing
+
+# Identity
+profile_name: "secure-agent"
+profile_version: "1.0.0"
+description: "Security-focused agent with comprehensive tool authorization"
+labels:
+  - "security"
+  - "restricted"
+
+# Model Configuration
+primary_model:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5-20250929"
+
+system_prompt: |
+  You are a security-aware AI assistant. All tool executions are subject to approval policies.
+  When a tool requires user consent, explain why it's potentially risky.
+
+# Tools/MCP Configuration with comprehensive security
+tools:
+  - server_name: "echo"
+    timeout: 30s
+    retries: 2
+    concurrency_limit: 3
+    # Very restrictive allowlist
+    allowlist:
+      - "echo"
+      - "uppercase"
+    # Comprehensive denylist for dangerous operations
+    denylist:
+      - ".*delete.*"
+      - ".*remove.*"
+      - ".*rm.*"
+      - ".*exec.*"
+      - ".*shell.*"
+      - ".*sudo.*"
+      - ".*chmod.*"
+      - ".*format.*"
+      - ".*truncate.*"
+      - ".*drop.*"
+    requires_approval:
+      always: false
+      # Extensive conditional approval patterns
+      conditional:
+        - ".*write.*"
+        - ".*create.*"
+        - ".*modify.*"
+        - ".*update.*"
+        - ".*save.*"
+        - ".*command.*"
+        - ".*run.*"
+        - ".*file.*"
+        - ".*network.*"
+        - ".*http.*"
+        - ".*curl.*"
+        - ".*wget.*"
+        - ".*download.*"
+    redaction:
+      # Comprehensive argument redaction
+      arguments:
+        - "password"
+        - "secret"
+        - "key"
+        - "token"
+        - "auth"
+        - "credential"
+        - "private"
+        - "sensitive"
+      outputs: false
+
+# Strict approval policies
+approval_mode: "policy"
+approval_policies:
+  write_ops: true
+  dangerous_ops: true
+  budget_exceeded: true
+auto_approve_in_daemon: false  # Never auto-approve
+
+# Conservative limits
+max_tool_calls: 10
+max_run_time_seconds: 60
+max_failures_per_run: 2
+
+# Enhanced logging for security monitoring
+log_level: "info"
+verbose_logging: true
+trace_enabled: true
+metrics_enabled: true
+log_payload_policy: "redacted"

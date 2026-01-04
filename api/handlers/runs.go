@@ -69,6 +69,13 @@ func RegisterRunsAPI(mux *http.ServeMux, rt *runtime.Runtime) {
 				} else {
 					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				}
+			case "approve":
+				// /runs/{id}/approve
+				if r.Method == http.MethodPost {
+					handleApproveToolCall(w, r, rt, runID)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
 			default:
 				http.Error(w, "Not found", http.StatusNotFound)
 			}
@@ -214,6 +221,38 @@ func handleResumeRun(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime
 		"status": "resumed",
 		"run_id": runID,
 	})
+}
+
+func handleApproveToolCall(w http.ResponseWriter, r *http.Request, rt *runtime.Runtime, runID string) {
+	var req ApprovalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.ApproveToolCall(r.Context(), runID, req.Approved, req.Reason); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to process approval: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	status := "approved"
+	if !req.Approved {
+		status = "denied"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":   status,
+		"run_id":   runID,
+		"approved": req.Approved,
+		"reason":   req.Reason,
+	})
+}
+
+// ApprovalRequest represents a tool approval request
+type ApprovalRequest struct {
+	Approved bool   `json:"approved"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // RunResponse is the API response for a run

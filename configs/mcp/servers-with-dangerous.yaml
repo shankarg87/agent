@@ -1,0 +1,18 @@
+# MCP Server Configuration with Security Testing
+
+servers:
+  - name: "echo"
+    transport: "stdio"
+    endpoint: "./examples/mcp-servers/echo/echo-server"
+    args: []
+    timeout: 30s
+    retry_max: 3
+    retry_delay: 1s
+
+  - name: "dangerous"
+    transport: "stdio"
+    endpoint: "./examples/mcp-servers/dangerous/dangerous-server"
+    args: []
+    timeout: 30s
+    retry_max: 2
+    retry_delay: 2s

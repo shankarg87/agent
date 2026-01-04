@@ -337,6 +337,85 @@ func (r *Runtime) ResumeRun(ctx context.Context, runID string) error {
 	return nil
 }
 
+// ApproveToolCall approves a tool call that is waiting for user consent
+func (r *Runtime) ApproveToolCall(ctx context.Context, runID string, approved bool, reason string) error {
+	r.logger.Info("Processing tool approval",
+		"run_id", runID,
+		"approved", approved,
+		"reason", reason,
+	)
+
+	r.mu.Lock()
+	runCtx, ok := r.activeRuns[runID]
+	r.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("run not found or not active")
+	}
+
+	runCtx.mu.Lock()
+	defer runCtx.mu.Unlock()
+
+	if !runCtx.isPaused || runCtx.Run.Status != store.RunStatePausedCheckpoint {
+		return fmt.Errorf("run is not paused for approval, current status: %s", runCtx.Run.Status)
+	}
+
+	if !approved {
+		// User denied the tool execution - cancel the run
+		r.logger.Info("Tool execution denied by user",
+			"run_id", runID,
+			"reason", reason,
+		)
+
+		runCtx.Run.Status = store.RunStateCancelled
+		runCtx.Run.Error = fmt.Sprintf("Tool execution denied by user: %s", reason)
+		now := time.Now()
+		runCtx.Run.EndedAt = &now
+
+		if err := r.store.UpdateRun(ctx, runCtx.Run); err != nil {
+			return err
+		}
+
+		// Emit cancellation event
+		r.publishEvent(runID, store.EventTypeRunCancelled, map[string]any{
+			"reason":      "tool_execution_denied",
+			"user_reason": reason,
+		})
+
+		// Signal cancellation (will unblock pauseForApproval)
+		cancel := r.cancellations[runID]
+		if cancel != nil {
+			cancel()
+		}
+
+		return nil
+	}
+
+	// User approved - resume execution
+	r.logger.Info("Tool execution approved by user",
+		"run_id", runID,
+		"reason", reason,
+	)
+
+	// Emit approval event
+	r.publishEvent(runID, store.EventTypeRunResumed, map[string]any{
+		"reason":      "tool_approved",
+		"user_reason": reason,
+	})
+
+	runCtx.isPaused = false
+
+	// Signal resume to unblock pauseForApproval
+	select {
+	case runCtx.resumeSignal <- struct{}{}:
+		r.logger.Verbose("Resume signal sent", "run_id", runID)
+	default:
+		r.logger.Verbose("Resume signal channel already has value", "run_id", runID)
+	}
+
+	return nil
+}
+
 // executeRun is the main execution loop for a run
 func (r *Runtime) executeRun(parentCtx context.Context, runID string) {
 	ctx, cancel := context.WithCancel(parentCtx)
@@ -464,8 +543,8 @@ func (r *Runtime) runAgentLoop(ctx context.Context, runCtx *RunContext) error {
 		// Build messages for LLM
 		providerMessages := r.buildProviderMessages(runCtx)
 
-		// Build tools for LLM
-		tools := r.buildProviderTools()
+		// Build tools for LLM (filtered by agent configuration)
+		tools := r.buildProviderTools(runCtx)
 
 		// Call LLM
 		req := &provider.ChatRequest{
@@ -596,8 +675,42 @@ func (r *Runtime) executeToolCall(ctx context.Context, runCtx *RunContext, tc pr
 		return fmt.Errorf("failed to parse tool arguments: %w", err)
 	}
 
-	// Execute via MCP
-	result, err := r.mcpRegistry.CallTool(ctx, tc.Function.Name, args)
+	// Find tool configuration for authorization checks
+	var toolConfig *config.ToolConfig
+	for i := range runCtx.Config.Tools {
+		// Check if this tool call matches any configured tool server
+		tool, err := r.mcpRegistry.GetTool(tc.Function.Name)
+		if err == nil && tool.ServerName == runCtx.Config.Tools[i].ServerName {
+			toolConfig = &runCtx.Config.Tools[i]
+			break
+		}
+	}
+
+	// Check if tool requires user consent
+	if toolConfig != nil {
+		requiresConsent, reason := r.mcpRegistry.RequiresUserConsent(tc.Function.Name, args, toolConfig)
+		if requiresConsent {
+			r.logger.Warn("Tool requires user consent",
+				"tool", tc.Function.Name,
+				"reason", reason,
+				"run_id", runCtx.Run.ID,
+			)
+
+			// In daemon mode with auto-approve, log and continue
+			if runCtx.Config.AutoApproveInDaemon && runCtx.Run.Mode == "autonomous" {
+				r.logger.Info("Auto-approving tool in daemon mode",
+					"tool", tc.Function.Name,
+					"run_id", runCtx.Run.ID,
+				)
+			} else {
+				// Pause execution and wait for user approval
+				return r.pauseForApproval(ctx, runCtx, tc, reason)
+			}
+		}
+	}
+
+	// Execute via MCP with tool configuration
+	result, err := r.mcpRegistry.CallTool(ctx, tc.Function.Name, args, toolConfig)
 	if err != nil {
 		r.publishEvent(runCtx.Run.ID, store.EventTypeToolFailed, map[string]any{
 			"tool_call_id": tc.ID,
@@ -612,6 +725,15 @@ func (r *Runtime) executeToolCall(ctx context.Context, runCtx *RunContext, tc pr
 		if content.Type == "text" {
 			resultText += content.Text
 		}
+	}
+
+	// Apply redaction if configured
+	if toolConfig != nil && toolConfig.Redaction.Outputs {
+		resultText = "[REDACTED]"
+		r.logger.Info("Tool output redacted",
+			"tool", tc.Function.Name,
+			"run_id", runCtx.Run.ID,
+		)
 	}
 
 	// Add tool result message
@@ -629,6 +751,98 @@ func (r *Runtime) executeToolCall(ctx context.Context, runCtx *RunContext, tc pr
 	})
 
 	return nil
+}
+
+// pauseForApproval pauses execution and waits for user approval for a tool call
+func (r *Runtime) pauseForApproval(ctx context.Context, runCtx *RunContext, tc provider.ToolCall, reason string) error {
+	r.logger.Info("Pausing run for tool approval",
+		"run_id", runCtx.Run.ID,
+		"tool", tc.Function.Name,
+		"reason", reason,
+	)
+
+	// Update run status to paused_checkpoint
+	runCtx.Run.Status = store.RunStatePausedCheckpoint
+	r.store.UpdateRun(ctx, runCtx.Run)
+
+	// Set pause state
+	runCtx.mu.Lock()
+	runCtx.isPaused = true
+	if runCtx.pauseSignal == nil {
+		runCtx.pauseSignal = make(chan struct{})
+	}
+	if runCtx.resumeSignal == nil {
+		runCtx.resumeSignal = make(chan struct{})
+	}
+	runCtx.mu.Unlock()
+
+	// Emit checkpoint event for user interaction
+	r.publishEvent(runCtx.Run.ID, store.EventTypeCheckpointRequired, map[string]any{
+		"tool_call_id":      tc.ID,
+		"tool_name":         tc.Function.Name,
+		"reason":            reason,
+		"prompt":            fmt.Sprintf("Do you approve executing '%s'? %s", tc.Function.Name, reason),
+		"tool_arguments":    tc.Function.Arguments,
+		"approval_required": true,
+		"approval_schema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"approved": map[string]any{
+					"type":        "boolean",
+					"description": "Whether to approve the tool execution",
+				},
+				"reason": map[string]any{
+					"type":        "string",
+					"description": "Optional reason for the decision",
+				},
+			},
+			"required": []string{"approved"},
+		},
+	})
+
+	// Emit pause event
+	r.publishEvent(runCtx.Run.ID, store.EventTypeRunPaused, map[string]any{
+		"reason":    "tool_approval_required",
+		"tool_name": tc.Function.Name,
+	})
+
+	// Wait for resume signal or context cancellation
+	select {
+	case <-runCtx.resumeSignal:
+		r.logger.Info("Run resumed after approval",
+			"run_id", runCtx.Run.ID,
+			"tool", tc.Function.Name,
+		)
+
+		// Update run status back to running
+		runCtx.Run.Status = store.RunStateRunning
+		r.store.UpdateRun(ctx, runCtx.Run)
+
+		// Emit resume event
+		r.publishEvent(runCtx.Run.ID, store.EventTypeRunResumed, map[string]any{
+			"reason":    "tool_approved",
+			"tool_name": tc.Function.Name,
+		})
+
+		// Clear pause state
+		runCtx.mu.Lock()
+		runCtx.isPaused = false
+		runCtx.mu.Unlock()
+
+		return nil // Continue with tool execution
+
+	case <-ctx.Done():
+		r.logger.Info("Run cancelled while waiting for approval",
+			"run_id", runCtx.Run.ID,
+			"tool", tc.Function.Name,
+		)
+
+		// Update run status to cancelled
+		runCtx.Run.Status = store.RunStateCancelled
+		r.store.UpdateRun(ctx, runCtx.Run)
+
+		return ctx.Err()
+	}
 }
 
 func (r *Runtime) buildProviderMessages(runCtx *RunContext) []provider.Message {
@@ -669,9 +883,15 @@ func (r *Runtime) buildProviderMessages(runCtx *RunContext) []provider.Message {
 	return messages
 }
 
-func (r *Runtime) buildProviderTools() []provider.Tool {
-	mcpTools := r.mcpRegistry.ListTools()
+func (r *Runtime) buildProviderTools(runCtx *RunContext) []provider.Tool {
+	// Use filtered tools based on agent configuration
+	mcpTools := r.mcpRegistry.ListToolsFiltered(runCtx.Config.Tools)
 	tools := make([]provider.Tool, len(mcpTools))
+
+	r.logger.Info("Building provider tools with filtering",
+		"total_tools", len(mcpTools),
+		"run_id", runCtx.Run.ID,
+	)
 
 	for i, t := range mcpTools {
 		tools[i] = provider.Tool{
@@ -682,6 +902,12 @@ func (r *Runtime) buildProviderTools() []provider.Tool {
 				Parameters:  t.InputSchema,
 			},
 		}
+
+		r.logger.Verbose("Tool included in LLM schema",
+			"tool", t.Name,
+			"server", t.ServerName,
+			"run_id", runCtx.Run.ID,
+		)
 	}
 
 	return tools

@@ -45,8 +45,32 @@ tools:
   - server_name: "echo"
     timeout: 30s
     retries: 3
+    concurrency_limit: 5
+    # Allow only safe echo/demo tools
+    allowlist:
+      - "echo"
+      - "uppercase"
+      - "add_numbers"
+    # Deny any potentially dangerous patterns
+    denylist:
+      - ".*delete.*"
+      - ".*remove.*"
+      - ".*exec.*"
+      - ".*shell.*"
+      - ".*sudo.*"
     requires_approval:
       always: false
+      # Require approval for any operations that might be risky
+      conditional:
+        - ".*write.*"
+        - ".*create.*"
+        - ".*modify.*"
+        - ".*command.*"
+        - ".*run.*"
+    redaction:
+      # Redact sensitive argument names
+      arguments: ["password", "secret", "key", "token", "auth"]
+      outputs: false
 
 # Approval & Checkpoints
 approval_mode: "policy"
