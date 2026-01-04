@@ -271,3 +271,189 @@ func (s *InMemoryStore) GetToolCalls(ctx context.Context, runID string) ([]*Tool
 
 	return toolCalls, nil
 }
+
+// DeleteSession removes a session and all associated data
+func (s *InMemoryStore) DeleteSession(ctx context.Context, sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, exists := s.sessions[sessionID]
+	if !exists {
+		return ErrNotFound
+	}
+
+	s.deleteSessionLocked(sessionID)
+
+	s.logger.Verbose("Session deleted with all associated data", "session_id", sessionID)
+	return nil
+}
+
+// deleteSessionLocked is a helper that assumes the caller holds the write lock
+func (s *InMemoryStore) deleteSessionLocked(sessionID string) {
+	session, exists := s.sessions[sessionID]
+	if !exists {
+		return
+	}
+
+	// Clean up runs associated with this session
+	runIDs := s.runsBySession[sessionID]
+	for _, runID := range runIDs {
+		// Delete run data
+		delete(s.runs, runID)
+		delete(s.events, runID)
+		delete(s.toolCalls, runID)
+	}
+
+	// Clean up session data
+	delete(s.sessions, sessionID)
+	delete(s.messages, sessionID)
+	delete(s.runsBySession, sessionID)
+
+	// Remove from tenant index
+	if tenantSessions, ok := s.sessionsByTenant[session.TenantID]; ok {
+		for i, id := range tenantSessions {
+			if id == sessionID {
+				s.sessionsByTenant[session.TenantID] = append(tenantSessions[:i], tenantSessions[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// DeleteRun removes a run and its associated events/tool calls
+func (s *InMemoryStore) DeleteRun(ctx context.Context, runID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, exists := s.runs[runID]
+	if !exists {
+		return ErrNotFound
+	}
+
+	s.deleteRunLocked(runID)
+
+	s.logger.Verbose("Run deleted with all associated data", "run_id", runID)
+	return nil
+}
+
+// deleteRunLocked is a helper that assumes the caller holds the write lock
+func (s *InMemoryStore) deleteRunLocked(runID string) {
+	run, exists := s.runs[runID]
+	if !exists {
+		return
+	}
+
+	// Clean up run data
+	delete(s.runs, runID)
+	delete(s.events, runID)
+	delete(s.toolCalls, runID)
+
+	// Remove from session index
+	if sessionRuns, ok := s.runsBySession[run.SessionID]; ok {
+		for i, id := range sessionRuns {
+			if id == runID {
+				s.runsBySession[run.SessionID] = append(sessionRuns[:i], sessionRuns[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// CleanupOldSessions removes sessions older than the specified duration
+func (s *InMemoryStore) CleanupOldSessions(ctx context.Context, tenantID string, olderThan time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := time.Now().Add(-olderThan)
+	deletedCount := 0
+
+	sessionIDs, exists := s.sessionsByTenant[tenantID]
+	if !exists {
+		s.logger.Verbose("Cleaned up old sessions",
+			"tenant_id", tenantID,
+			"deleted_count", deletedCount,
+			"older_than", olderThan)
+		return nil
+	}
+
+	var remainingSessions []string
+
+	for _, sessionID := range sessionIDs {
+		if session, exists := s.sessions[sessionID]; exists && session.CreatedAt.Before(cutoff) {
+			s.deleteSessionLocked(sessionID)
+			deletedCount++
+		} else if exists {
+			remainingSessions = append(remainingSessions, sessionID)
+		}
+	}
+
+	// Update the tenant index with remaining sessions
+	if len(remainingSessions) == 0 {
+		delete(s.sessionsByTenant, tenantID)
+	} else {
+		s.sessionsByTenant[tenantID] = remainingSessions
+	}
+
+	s.logger.Verbose("Cleaned up old sessions",
+		"tenant_id", tenantID,
+		"deleted_count", deletedCount,
+		"older_than", olderThan)
+	return nil
+}
+
+// CleanupOldRuns removes completed runs older than the specified duration for a session
+func (s *InMemoryStore) CleanupOldRuns(ctx context.Context, sessionID string, olderThan time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := time.Now().Add(-olderThan)
+	deletedCount := 0
+
+	runIDs, exists := s.runsBySession[sessionID]
+	if !exists {
+		s.logger.Verbose("Cleaned up old runs",
+			"session_id", sessionID,
+			"deleted_count", deletedCount,
+			"older_than", olderThan)
+		return nil
+	}
+
+	var remainingRuns []string
+	var runsToDelete []string
+
+	// First pass: identify which runs to delete
+	for _, runID := range runIDs {
+		if run, exists := s.runs[runID]; exists {
+			// Only delete completed, failed, or cancelled runs
+			if (run.Status == RunStateCompleted || run.Status == RunStateFailed || run.Status == RunStateCancelled) &&
+				run.CreatedAt.Before(cutoff) {
+				runsToDelete = append(runsToDelete, runID)
+			} else {
+				remainingRuns = append(remainingRuns, runID)
+			}
+		} else {
+			// Run doesn't exist, don't include it in remaining runs
+		}
+	}
+
+	// Second pass: delete the identified runs
+	for _, runID := range runsToDelete {
+		delete(s.runs, runID)
+		delete(s.events, runID)
+		delete(s.toolCalls, runID)
+		deletedCount++
+	}
+
+	// Update the session index with remaining runs
+	if len(remainingRuns) == 0 {
+		delete(s.runsBySession, sessionID)
+	} else {
+		s.runsBySession[sessionID] = remainingRuns
+	}
+
+	s.logger.Verbose("Cleaned up old runs",
+		"session_id", sessionID,
+		"deleted_count", deletedCount,
+		"older_than", olderThan)
+	return nil
+}

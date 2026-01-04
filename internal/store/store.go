@@ -30,6 +30,12 @@ type Store interface {
 	AddToolCall(ctx context.Context, runID string, toolCall *ToolCall) error
 	UpdateToolCall(ctx context.Context, toolCall *ToolCall) error
 	GetToolCalls(ctx context.Context, runID string) ([]*ToolCall, error)
+
+	// Cleanup methods
+	DeleteSession(ctx context.Context, sessionID string) error
+	DeleteRun(ctx context.Context, runID string) error
+	CleanupOldSessions(ctx context.Context, tenantID string, olderThan time.Duration) error
+	CleanupOldRuns(ctx context.Context, sessionID string, olderThan time.Duration) error
 }
 
 // Session represents a conversation session
